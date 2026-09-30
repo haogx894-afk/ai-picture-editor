@@ -137,30 +137,43 @@ async def _continue_latest_failure(
     session: AsyncSession, record: EditSession, goal: str
 ) -> AgentRun:
     latest = await _latest_turn(session, record)
-    if latest is None:
-        return await _notice(session, record, goal, "没有可继续的失败任务，请重新描述需求。")
-    if latest.status is not RunStatus.FAILED:
+    if latest is not None and latest.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
         messages = {
             RunStatus.QUEUED: "当前任务正在等待确认，请先确认或取消。",
             RunStatus.RUNNING: "当前任务仍在执行，请等待完成后再继续。",
+        }
+        return await _notice(session, record, goal, messages[latest.status])
+    if latest is not None and latest.plan and latest.status in {
+        RunStatus.SUCCEEDED,
+        RunStatus.CANCELED,
+    }:
+        messages = {
             RunStatus.SUCCEEDED: "最近任务已经完成，没有可继续的失败任务。",
             RunStatus.CANCELED: "最近任务已取消，无法继续，请重新描述需求。",
         }
         return await _notice(session, record, goal, messages[latest.status])
 
-    if not any(step.get("status") == plan_mod.FAILED for step in latest.plan):
+    failed = await _latest_failed_turn(session, record)
+    if failed is None:
+        if latest is not None and latest.status is RunStatus.CANCELED:
+            reply = "最近任务已取消，无法继续，请重新描述需求。"
+        else:
+            reply = "没有可继续的失败任务，请重新描述需求。"
+        return await _notice(session, record, goal, reply)
+
+    if not any(step.get("status") == plan_mod.FAILED for step in failed.plan):
         return await _notice(session, record, goal, "最近任务没有可恢复步骤，请重新描述需求。")
 
-    if latest.revision != record.revision:
+    if failed.revision != record.revision:
         return await _plan_and_store(
             session,
             record,
             goal,
-            resumed_from_id=latest.id,
+            resumed_from_id=failed.id,
             force_confirm=True,
         )
 
-    steps = _copy(latest.plan)
+    steps = _copy(failed.plan)
     for step in steps:
         if step.get("status") in {
             plan_mod.FAILED,
@@ -182,7 +195,7 @@ async def _continue_latest_failure(
         plan=steps,
         status=RunStatus.RUNNING,
         error=None,
-        resumed_from_id=latest.id,
+        resumed_from_id=failed.id,
     )
     session.add(turn)
     await session.commit()
@@ -194,6 +207,15 @@ async def _latest_turn(session: AsyncSession, record: EditSession) -> AgentRun |
     return await session.scalar(
         select(AgentRun)
         .where(AgentRun.session_id == record.id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(1)
+    )
+
+
+async def _latest_failed_turn(session: AsyncSession, record: EditSession) -> AgentRun | None:
+    return await session.scalar(
+        select(AgentRun)
+        .where(AgentRun.session_id == record.id, AgentRun.status == RunStatus.FAILED)
         .order_by(AgentRun.created_at.desc())
         .limit(1)
     )

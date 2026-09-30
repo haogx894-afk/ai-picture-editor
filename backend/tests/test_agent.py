@@ -525,4 +525,26 @@ async def test_continue_reports_when_latest_task_is_already_succeeded(
 
     assert continued["steps"] == []
     assert continued["resumed_from_id"] is None
-    assert "已经完成" in continued["reply"]
+    assert "没有可继续的失败任务" in continued["reply"]
+
+
+async def test_continue_ignores_a_newer_running_notice_and_resumes_failure(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake_planner(tool_call("replace_region", {"prompt": "改成黑色", "layer_id": "不存在的层"}))
+    session = await open_session(signed_in)
+
+    running = await send(signed_in, session["id"], "把不存在的层换成黑色")
+    notice = await send(signed_in, session["id"], "继续")
+    assert notice["steps"] == []
+    assert "仍在执行" in notice["reply"]
+
+    await run_tool({}, uuid.UUID(running["steps"][0]["run_id"]))
+    turns = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()
+    failed = next(turn for turn in turns if turn["id"] == running["id"])
+    assert failed["status"] == "failed"
+
+    resumed = await send(signed_in, session["id"], "继续")
+
+    assert resumed["resumed_from_id"] == failed["id"]
+    assert resumed["status"] == "running"
