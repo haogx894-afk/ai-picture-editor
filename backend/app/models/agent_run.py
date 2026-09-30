@@ -23,7 +23,13 @@ class AgentRun(UUIDBase):
     session_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("edit_sessions.id", ondelete="CASCADE"), index=True
     )
-    # 规划所基于的修订号，用于判断执行时画布是否已被改动
+    resumed_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("agent_runs.id", ondelete="SET NULL"),
+        default=None,
+        index=True,
+    )
+    # 规划开始或最近一次成功步骤观察到的修订号，用于判断失败后画布是否被改动
     revision: Mapped[int]
     goal: Mapped[str] = mapped_column(Text)
     reply: Mapped[str] = mapped_column(Text, default="")

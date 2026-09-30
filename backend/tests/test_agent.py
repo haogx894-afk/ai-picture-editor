@@ -202,6 +202,21 @@ async def test_conversation_is_returned_in_order(signed_in: httpx.AsyncClient, f
     assert [turn["goal"] for turn in turns] == ["第一句", "第二句"]
 
 
+async def test_planner_receives_bounded_conversation_history(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake = fake_planner(AIMessage(content="好的。"))
+    session_id = (await open_session(signed_in))["id"]
+
+    await send(signed_in, session_id, "第一轮请求")
+    await send(signed_in, session_id, "第二轮请求")
+
+    system = fake.messages[0].content
+    assert "会话历史" in system
+    assert "第一轮请求" in system
+    assert "第二轮请求" not in system
+
+
 async def test_missing_api_key_fails_the_turn(signed_in: httpx.AsyncClient, monkeypatch):
     """模型不可用时必须明确失败，不能伪造成功结果。"""
     settings = get_settings()
@@ -415,3 +430,99 @@ async def test_failed_step_can_be_retried(signed_in: httpx.AsyncClient, fake_pla
     ).json()
     assert retried["status"] == "running"
     assert retried["steps"][0]["run_id"] != failed["steps"][0]["run_id"]
+
+
+async def test_continue_resumes_latest_failure_without_repeating_successful_steps(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake_planner(
+        tool_calls(
+            ("flip_layer", {"direction": "horizontal"}),
+            ("replace_region", {"prompt": "改成黑色", "layer_id": "不存在的层"}),
+        )
+    )
+    session = await open_session(signed_in)
+    turn = await send(signed_in, session["id"], "先翻转再改色")
+    started = (
+        await signed_in.post(f"/api/sessions/{session['id']}/messages/{turn['id']}/confirm")
+    ).json()
+
+    first_run_id = started["steps"][0]["run_id"]
+    await run_tool({}, uuid.UUID(first_run_id))
+    after_first = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+    second_run_id = after_first["steps"][1]["run_id"]
+    await run_tool({}, uuid.UUID(second_run_id))
+    failed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+    assert failed["status"] == "failed"
+    assert [step["status"] for step in failed["steps"]] == ["succeeded", "failed"]
+    current = (await signed_in.get(f"/api/sessions/{session['id']}" )).json()
+    assert failed["revision"] == current["revision"]
+
+    resumed = await send(signed_in, session["id"], "上一步任务没完成，继续完成")
+
+    assert resumed["id"] != failed["id"]
+    assert resumed["steps"][0]["status"] == "succeeded"
+    assert resumed["steps"][0]["run_id"] == first_run_id
+    assert resumed["steps"][1]["run_id"] != second_run_id
+    current = (await signed_in.get(f"/api/sessions/{session['id']}" )).json()
+    assert current["document"]["layers"][0]["transform"]["scale_x"] == -1
+
+
+async def test_continue_replans_after_canvas_revision_changes(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake = fake_planner(
+        tool_calls(
+            ("flip_layer", {"direction": "horizontal"}),
+            ("replace_region", {"prompt": "改成黑色", "layer_id": "不存在的层"}),
+        )
+    )
+    session = await open_session(signed_in)
+    turn = await send(signed_in, session["id"], "先翻转再改色")
+    started = (
+        await signed_in.post(f"/api/sessions/{session['id']}/messages/{turn['id']}/confirm")
+    ).json()
+    await run_tool({}, uuid.UUID(started["steps"][0]["run_id"]))
+    after_first = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+    await run_tool({}, uuid.UUID(after_first["steps"][1]["run_id"]))
+    failed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+
+    await apply(signed_in, session["id"], "flip_layer", {"direction": "vertical"})
+    fake._message = tool_call("rotate_layer", {"angle": 15})
+
+    replanned = await send(signed_in, session["id"], "上一步任务没完成，继续完成")
+
+    assert replanned["resumed_from_id"] == failed["id"]
+    assert replanned["status"] == "queued"
+    assert [step["tool"] for step in replanned["steps"]] == ["rotate_layer"]
+    assert replanned["steps"][0]["run_id"] is None
+    assert "画布已变化" in replanned["reply"]
+
+
+async def test_continue_does_not_duplicate_a_running_task(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake_planner(tool_call("remove_background", {}))
+    session = await open_session(signed_in)
+
+    running = await send(signed_in, session["id"], "去除背景")
+    continued = await send(signed_in, session["id"], "继续")
+
+    assert running["status"] == "running"
+    assert continued["steps"] == []
+    assert continued["resumed_from_id"] is None
+    assert "仍在执行" in continued["reply"]
+
+
+async def test_continue_reports_when_latest_task_is_already_succeeded(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake_planner(AIMessage(content="好的。"))
+    session = await open_session(signed_in)
+
+    await send(signed_in, session["id"], "查看当前图片")
+    continued = await send(signed_in, session["id"], "继续")
+
+    assert continued["steps"] == []
+    assert continued["resumed_from_id"] is None
+    assert "已经完成" in continued["reply"]

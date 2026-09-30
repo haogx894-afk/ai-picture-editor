@@ -10,10 +10,16 @@ from app.agent import plan as plan_mod
 from app.layers import Layer, LayerDocument, LayerKind
 from app.models import AgentRun, EditSession, ToolRun
 from app.models.tool_run import RunStatus
-from app.services import assets, runs, selections, tools
-from app.tools import spec_of
+from app.services import assets, runs, selections, sessions, tools
+from app.tools import label_of, spec_of
 
 logger = logging.getLogger(__name__)
+
+_HISTORY_TURNS = 6
+_HISTORY_FIELD_LIMIT = 320
+_HISTORY_TOTAL_LIMIT = 4000
+_CONTINUE_EXACT = {"继续", "继续执行", "继续完成", "接着做"}
+_CONTINUE_MARKERS = ("上一步", "上一任务", "未完成", "没完成", "没做完", "失败任务")
 
 
 class TurnNotFound(Exception):
@@ -65,11 +71,28 @@ def _layer_name(layer: Layer) -> str:
 
 async def respond(session: AsyncSession, record: EditSession, goal: str) -> AgentRun:
     """规划一轮指令并落库。多步计划先停住等确认，单步直接开跑。"""
+    if _is_continuation(goal):
+        return await _continue_latest_failure(session, record, goal)
+    return await _plan_and_store(session, record, goal)
+
+
+async def _plan_and_store(
+    session: AsyncSession,
+    record: EditSession,
+    goal: str,
+    *,
+    resumed_from_id: uuid.UUID | None = None,
+    force_confirm: bool = False,
+) -> AgentRun:
     revision = record.revision
     reply, steps, error = "", [], None
 
     try:
-        reply, steps = await agent.run(goal, await describe(session, record))
+        reply, steps = await agent.run(
+            goal,
+            await describe(session, record),
+            await history_for_planner(session, record),
+        )
         steps = await _pin_selection(session, record, steps)
     except agent.PlannerUnavailable as exc:
         error = str(exc)
@@ -80,6 +103,9 @@ async def respond(session: AsyncSession, record: EditSession, goal: str) -> Agen
 
     if error:
         status = RunStatus.FAILED
+    elif force_confirm and steps:
+        status = RunStatus.QUEUED
+        reply = f"{reply.rstrip('。')}。当前画布已变化，请确认后执行。"
     elif plan_mod.needs_confirm(steps):
         status = RunStatus.QUEUED
     elif steps:
@@ -96,6 +122,7 @@ async def respond(session: AsyncSession, record: EditSession, goal: str) -> Agen
         plan=steps,
         status=status,
         error=error,
+        resumed_from_id=resumed_from_id,
     )
     session.add(turn)
     await session.commit()
@@ -104,6 +131,130 @@ async def respond(session: AsyncSession, record: EditSession, goal: str) -> Agen
     if turn.status is RunStatus.RUNNING:
         await _advance(session, turn)
     return turn
+
+
+async def _continue_latest_failure(
+    session: AsyncSession, record: EditSession, goal: str
+) -> AgentRun:
+    latest = await _latest_turn(session, record)
+    if latest is None:
+        return await _notice(session, record, goal, "没有可继续的失败任务，请重新描述需求。")
+    if latest.status is not RunStatus.FAILED:
+        messages = {
+            RunStatus.QUEUED: "当前任务正在等待确认，请先确认或取消。",
+            RunStatus.RUNNING: "当前任务仍在执行，请等待完成后再继续。",
+            RunStatus.SUCCEEDED: "最近任务已经完成，没有可继续的失败任务。",
+            RunStatus.CANCELED: "最近任务已取消，无法继续，请重新描述需求。",
+        }
+        return await _notice(session, record, goal, messages[latest.status])
+
+    if not any(step.get("status") == plan_mod.FAILED for step in latest.plan):
+        return await _notice(session, record, goal, "最近任务没有可恢复步骤，请重新描述需求。")
+
+    if latest.revision != record.revision:
+        return await _plan_and_store(
+            session,
+            record,
+            goal,
+            resumed_from_id=latest.id,
+            force_confirm=True,
+        )
+
+    steps = _copy(latest.plan)
+    for step in steps:
+        if step.get("status") in {
+            plan_mod.FAILED,
+            plan_mod.PENDING,
+            plan_mod.WAITING,
+            plan_mod.QUEUED,
+            plan_mod.RUNNING,
+        }:
+            step["run_id"] = None
+            step["status"] = plan_mod.PENDING
+            step.pop("approved", None)
+
+    turn = AgentRun(
+        user_id=record.user_id,
+        session_id=record.id,
+        revision=record.revision,
+        goal=goal,
+        reply="继续执行上一次未完成的任务。",
+        plan=steps,
+        status=RunStatus.RUNNING,
+        error=None,
+        resumed_from_id=latest.id,
+    )
+    session.add(turn)
+    await session.commit()
+    await session.refresh(turn)
+    return await _advance(session, turn)
+
+
+async def _latest_turn(session: AsyncSession, record: EditSession) -> AgentRun | None:
+    return await session.scalar(
+        select(AgentRun)
+        .where(AgentRun.session_id == record.id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(1)
+    )
+
+
+async def _notice(
+    session: AsyncSession, record: EditSession, goal: str, reply: str
+) -> AgentRun:
+    turn = AgentRun(
+        user_id=record.user_id,
+        session_id=record.id,
+        revision=record.revision,
+        goal=goal,
+        reply=reply,
+        plan=[],
+        status=RunStatus.SUCCEEDED,
+        error=None,
+    )
+    session.add(turn)
+    await session.commit()
+    await session.refresh(turn)
+    return turn
+
+
+def _is_continuation(goal: str) -> bool:
+    text = "".join(goal.split())
+    return text in _CONTINUE_EXACT or any(marker in text for marker in _CONTINUE_MARKERS)
+
+
+async def history_for_planner(session: AsyncSession, record: EditSession) -> str:
+    """构造有界的会话摘要，避免把完整工具载荷或图片数据送入规划模型。"""
+    result = await session.scalars(
+        select(AgentRun)
+        .where(AgentRun.session_id == record.id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(_HISTORY_TURNS)
+    )
+    turns = list(reversed(list(result)))
+    if not turns:
+        return "暂无历史记录"
+
+    lines = ["以下是最近会话摘要，仅用于理解上下文："]
+    for index, turn in enumerate(turns, start=1):
+        steps = "、".join(
+            f"{label_of(step['tool'], step.get('params'))}[{step.get('status', 'pending')}]"
+            for step in turn.plan
+        ) or "无工具步骤"
+        line = (
+            f"第{index}轮：用户={_clip(turn.goal)}；"
+            f"Agent={_clip(turn.reply)}；步骤={_clip(steps)}"
+        )
+        if turn.error:
+            line += f"；错误={_clip(turn.error)}"
+        lines.append(line)
+
+    return _clip("\n".join(lines), _HISTORY_TOTAL_LIMIT)
+
+
+def _clip(value: str, limit: int = _HISTORY_FIELD_LIMIT) -> str:
+    value = " ".join(value.split())
+    return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
 
 
 async def _pin_selection(
@@ -182,10 +333,15 @@ async def continue_plan(session: AsyncSession, run: ToolRun) -> None:
         return
 
     steps = _copy(turn.plan)
+    record = await sessions.load(session, run.session_id)
     for step in steps:
         if step.get("run_id") == str(run.id):
             step["status"] = run.status.value
     turn.plan = steps
+    # 计划执行过程中，前置成功步骤可能推进画布 revision；失败步骤不更新
+    # 记录的基准，这样用户在失败后修改画布时仍能被识别为 revision 变化。
+    if run.status is RunStatus.SUCCEEDED:
+        turn.revision = record.revision
     _touch(turn)
     # 先不落库：同步的下一步（如翻转）跟这次一起提交，前端不会捞到「上一步完了、下一步还没开始」
     await _advance(session, turn)
@@ -215,6 +371,9 @@ async def _advance(session: AsyncSession, turn: AgentRun) -> AgentRun:
             )
             step["run_id"] = str(run.id)
             step["status"] = run.status.value
+            if run.status is RunStatus.SUCCEEDED:
+                record = await sessions.load(session, turn.session_id)
+                turn.revision = record.revision
             turn.plan = steps
             turn.status = RunStatus.RUNNING
             _touch(turn)

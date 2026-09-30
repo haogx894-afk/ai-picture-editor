@@ -46,6 +46,7 @@ class PlanStepOut(BaseModel):
 
 class TurnOut(BaseModel):
     id: uuid.UUID
+    resumed_from_id: uuid.UUID | None
     revision: int
     goal: str
     reply: str
@@ -58,6 +59,7 @@ class TurnOut(BaseModel):
     def of(cls, turn: AgentRun) -> "TurnOut":
         return cls(
             id=turn.id,
+            resumed_from_id=turn.resumed_from_id,
             revision=turn.revision,
             goal=turn.goal,
             reply=turn.reply,

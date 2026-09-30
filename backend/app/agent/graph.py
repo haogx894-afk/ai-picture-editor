@@ -36,7 +36,9 @@ _SYSTEM = """你是电商图片修图助手，通过调用工具完成用户的�
 - 调用工具时不要输出解释或工具名。只有指令与修图无关、或现有工具确实做不到时，
   才用一句中文说明，不要提内部参数。
 
-当前画布：{context}"""
+当前画布：{context}
+
+会话历史（仅摘要）：{history}"""
 
 _FALLBACK_REPLY = "没太理解这条指令，换个说法或说得更具体一些。"
 _REFUSAL_LIMIT = 60
@@ -45,6 +47,7 @@ _REFUSAL_LIMIT = 60
 class AgentState(TypedDict):
     goal: str
     context: str
+    history: str
     plan: list[dict]
     reply: str
 
@@ -52,7 +55,9 @@ class AgentState(TypedDict):
 async def _plan(state: AgentState) -> AgentState:
     message = await planner().ainvoke(
         [
-            SystemMessage(_SYSTEM.format(context=state["context"])),
+            SystemMessage(
+                _SYSTEM.format(context=state["context"], history=state["history"])
+            ),
             HumanMessage(state["goal"]),
         ]
     )
@@ -82,9 +87,17 @@ def _graph():
     return builder.compile()
 
 
-async def run(goal: str, context: str) -> tuple[str, list[dict]]:
+async def run(goal: str, context: str, history: str = "暂无历史记录") -> tuple[str, list[dict]]:
     """规划并校验一轮指令，返回答复与尚未下发的计划。"""
-    state = await _graph().ainvoke({"goal": goal, "context": context, "plan": [], "reply": ""})
+    state = await _graph().ainvoke(
+        {
+            "goal": goal,
+            "context": context,
+            "history": history,
+            "plan": [],
+            "reply": "",
+        }
+    )
     return spoken(state["reply"], state["plan"]), state["plan"]
 
 

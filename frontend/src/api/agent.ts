@@ -21,6 +21,7 @@ export type PlanStep = {
 
 export type Turn = {
   id: string
+  resumed_from_id: string | null
   revision: number
   goal: string
   reply: string
