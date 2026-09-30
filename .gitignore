@@ -7,6 +7,12 @@
 # 方案与过程文档，不入库
 docs/
 
+# Matt Pocock skills 本地治理文件，不入库
+AGENTS.md
+CLAUDE.md
+GLOSSARY.md
+GLOSSARY-MAP.md
+
 # 用户评测素材
 evals/
 
