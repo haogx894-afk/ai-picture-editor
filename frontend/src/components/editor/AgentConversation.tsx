@@ -56,17 +56,39 @@ function TurnBlock({ turn, sessionId }: { turn: Turn; sessionId: string }) {
         {turn.goal}
       </p>
 
-      {turn.error ? (
+      {turn.optimistic ? (
+        <ThinkingIndicator />
+      ) : turn.error ? (
         <p className="text-danger mr-6 text-xs leading-relaxed">{turn.error}</p>
       ) : (
         <p className="text-ink mr-6 text-xs leading-relaxed">{turn.reply}</p>
       )}
 
-      {turn.steps.map((step, index) => (
+      {!turn.optimistic && turn.steps.map((step, index) => (
         <StepCard key={step.id} index={index + 1} step={step} sessionId={sessionId} />
       ))}
 
-      <PlanActions turn={turn} sessionId={sessionId} />
+      {!turn.optimistic && <PlanActions turn={turn} sessionId={sessionId} />}
+    </div>
+  )
+}
+
+function ThinkingIndicator() {
+  return (
+    <div
+      className="text-brand-strong mr-6 flex items-center gap-2 text-xs"
+      role="status"
+      aria-label="思考中"
+    >
+      <span className="border-brand grid size-4 animate-thinking-ring rounded-full border-[1.5px] border-r-transparent" />
+      <span>
+        思考中
+        <span aria-hidden="true" className="inline-flex w-5">
+          <span className="animate-thinking-dot [animation-delay:0ms]">.</span>
+          <span className="animate-thinking-dot [animation-delay:180ms]">.</span>
+          <span className="animate-thinking-dot [animation-delay:360ms]">.</span>
+        </span>
+      </span>
     </div>
   )
 }
