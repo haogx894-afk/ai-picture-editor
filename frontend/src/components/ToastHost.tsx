@@ -14,7 +14,7 @@ export default function ToastHost() {
           className={`shadow-control pointer-events-auto flex items-center gap-1.5 rounded-full text-xs font-medium ${
             item.action ? 'py-1 pr-1 pl-3.5' : 'px-3.5 py-1.5'
           } ${item.leaving ? 'animate-fade-out' : 'animate-pop'} ${
-            item.tone === 'danger' ? 'bg-danger text-white' : 'bg-ink text-white'
+            item.tone === 'danger' ? 'bg-danger text-white' : 'bg-dark text-white'
           }`}
         >
           <button type="button" onClick={() => dismiss(item.id)} className="text-left">

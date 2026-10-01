@@ -97,7 +97,7 @@ async def _plan_and_store(
             await history_for_planner(session, record),
         )
         steps = await _pin_selection(session, record, steps)
-        steps = plan_mod.validate(_protect_superres_text(goal, steps))
+        steps = plan_mod.validate(_protect_text_repair(goal, _protect_superres_text(goal, steps)))
     except agent.PlannerUnavailable as exc:
         error = str(exc)
     except Exception:
@@ -493,7 +493,9 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
             continuation_round=turn.continuation_rounds + 1,
         )
         proposed = await _pin_selection(session, record, proposed)
-        proposed = _protect_superres_text(turn.goal, proposed)
+        proposed = _protect_text_repair(
+            turn.goal, _protect_superres_text(turn.goal, proposed)
+        )
         proposed = plan_mod.validate(proposed)
     except agent.PlannerUnavailable:
         proposed = []
@@ -566,6 +568,34 @@ def _protect_superres_text(goal: str, steps: list[dict]) -> list[dict]:
         for step in steps
         if step.get("tool") != "split_layers"
     ]
+
+
+def _protect_text_repair(goal: str, steps: list[dict]) -> list[dict]:
+    """文字损坏修复走 OCR 局部修复，不让规划模型退化为拆层。"""
+    compact = "".join(goal.split())
+    if not _is_text_repair_goal(compact) or "拆层" in compact or "分层" in compact:
+        return steps
+    if any(step.get("tool") == "repair_text" for step in steps):
+        return steps
+
+    repair = {"tool": "repair_text", "params": {"prompt": goal[:500]}}
+    remaining = [step for step in steps if step.get("tool") != "split_layers"]
+    return [repair, *remaining]
+
+
+def _is_text_repair_goal(compact: str) -> bool:
+    return any(
+        marker in compact
+        for marker in (
+            "文字扭曲",
+            "文字变形",
+            "字体扭曲",
+            "字体变形",
+            "乱码",
+            "修复文字",
+            "重新生成文字",
+        )
+    )
 
 
 def _completed_summary(steps: list[dict]) -> str:

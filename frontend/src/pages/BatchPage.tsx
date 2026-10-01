@@ -83,7 +83,7 @@ function Compose() {
                 <button
                   type="button"
                   onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}
-                  className="bg-ink/70 absolute -top-1 -right-1 grid size-5 place-items-center rounded-full text-[10px] text-white"
+                  className="bg-dark/70 absolute -top-1 -right-1 grid size-5 place-items-center rounded-full text-[10px] text-white"
                   aria-label="移除"
                 >
                   ×
@@ -119,7 +119,7 @@ function Compose() {
           type="button"
           disabled={Boolean(blocked) || create.isPending}
           onClick={start}
-          className="bg-ink hover:bg-dark rounded-control px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="bg-dark hover:bg-brand-strong rounded-control px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
         >
           {create.isPending ? '提交中…' : '开始处理'}
         </button>
@@ -207,7 +207,7 @@ function Watch({ runId }: { runId: string }) {
             type="button"
             disabled={!done || succeeded === 0 || pack.isPending}
             onClick={download}
-            className="bg-ink hover:bg-dark rounded-control px-3.5 py-2 text-xs font-medium text-white disabled:opacity-40"
+            className="bg-dark hover:bg-brand-strong rounded-control px-3.5 py-2 text-xs font-medium text-white disabled:opacity-40"
           >
             {pack.isPending ? '打包中…' : '打包下载'}
           </button>
@@ -336,7 +336,7 @@ function Pipeline({
                       type="button"
                       onClick={() => onChange({ ...draft, scale })}
                       className={`rounded-control px-3 py-1.5 text-xs ${
-                        draft.scale === scale ? 'bg-ink text-white' : 'border-line text-muted border'
+                        draft.scale === scale ? 'bg-dark text-white' : 'border-line text-muted border'
                       }`}
                     >
                       {scale} 倍
@@ -353,7 +353,7 @@ function Pipeline({
                       onClick={() => onChange({ ...draft, expandRatio: ratio })}
                       className={`rounded-control px-3 py-1.5 text-xs ${
                         draft.expandRatio === ratio
-                          ? 'bg-ink text-white'
+                          ? 'bg-dark text-white'
                           : 'border-line text-muted border'
                       }`}
                     >
@@ -371,7 +371,7 @@ function Pipeline({
                       onClick={() => toggleDelivery(ratio)}
                       className={`rounded-control px-3 py-1.5 text-xs ${
                         draft.delivery.includes(ratio)
-                          ? 'bg-ink text-white'
+                          ? 'bg-dark text-white'
                           : 'border-line text-muted border'
                       }`}
                     >

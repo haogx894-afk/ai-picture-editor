@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 export default function StartBanner({ label, to }: { label: string; to: string }) {
   return (
     <section className="mx-auto max-w-5xl px-6 pb-20">
-      <div className="bg-ink rounded-panel relative isolate overflow-hidden px-8 py-14 text-center">
+      <div className="bg-dark rounded-panel relative isolate overflow-hidden px-8 py-14 text-center">
         <div
           className="absolute inset-0 bg-[radial-gradient(52%_60%_at_50%_-10%,rgb(217_255_110/0.22),transparent_70%)]"
           aria-hidden

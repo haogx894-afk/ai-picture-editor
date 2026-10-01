@@ -48,7 +48,7 @@ export function SelectionPreview() {
           <span key={pos} className={`bg-paper border-brand absolute size-2 rounded-full border-2 ${pos}`} />
         ))}
       </div>
-      <p className="bg-ink/90 absolute bottom-2.5 left-2.5 rounded-full px-2.5 py-1 text-[10px] text-white">
+      <p className="bg-dark/90 absolute bottom-2.5 left-2.5 rounded-full px-2.5 py-1 text-[10px] text-white">
         把背景换成米色亚麻
       </p>
     </div>

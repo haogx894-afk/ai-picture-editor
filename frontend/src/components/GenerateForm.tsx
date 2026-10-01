@@ -127,7 +127,7 @@ function Segmented<T extends string | number>({
           onClick={() => onChange(option.value)}
           aria-pressed={option.value === value}
           className={`rounded-[6px] px-2 py-1 text-xs font-medium transition-all duration-150 active:scale-95 ${
-            option.value === value ? 'bg-ink text-white' : 'text-muted hover:bg-soft hover:text-ink'
+          option.value === value ? 'bg-dark text-white' : 'text-muted hover:bg-soft hover:text-ink'
           }`}
         >
           {option.label}

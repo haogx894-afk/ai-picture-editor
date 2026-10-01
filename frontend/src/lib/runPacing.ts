@@ -25,6 +25,7 @@ const SECONDS: Record<string, number> = {
   generate_marketing: 45,
   batch_process: 60,
   split_layers: 70,
+  repair_text: 45,
 }
 
 const FALLBACK = 25

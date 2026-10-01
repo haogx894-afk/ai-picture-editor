@@ -100,6 +100,7 @@ export const ACTION_LABELS: Record<string, string> = {
   rotate_layer: '旋转',
   move_layer: '移动',
   split_layers: '拆层',
+  repair_text: '修复文字',
   promote_object_to_layer: '提升为图层',
   generate_marketing: '营销图',
   prepare_delivery_sizes: '投放尺寸',

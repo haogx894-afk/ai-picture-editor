@@ -104,6 +104,18 @@ async def test_upscale_request_does_not_automatically_split_layers(
     assert [step["tool"] for step in turn["steps"]] == ["upscale_image"]
 
 
+async def test_text_repair_request_does_not_split_layers(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    """文字损坏修复必须走 OCR 局部修复，不能退化成拆层。"""
+    fake_planner(tool_call("split_layers", {}))
+    session_id = (await open_session(signed_in))["id"]
+
+    turn = await send(signed_in, session_id, "文字扭曲了，重新生成")
+
+    assert [step["tool"] for step in turn["steps"]] == ["repair_text"]
+
+
 async def test_marketing_tool_is_planned_and_dispatched(signed_in: httpx.AsyncClient, fake_planner):
     fake_planner(tool_call("generate_marketing", {"kind": "product"}))
     session_id = (await open_session(signed_in))["id"]

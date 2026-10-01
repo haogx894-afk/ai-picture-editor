@@ -96,7 +96,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={action.isPending}
-              className="bg-ink hover:bg-dark rounded-control w-full py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
+              className="bg-dark hover:bg-brand-strong rounded-control w-full py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
             >
               {action.isPending ? '处理中…' : copy.submit}
             </button>

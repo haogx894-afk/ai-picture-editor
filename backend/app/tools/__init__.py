@@ -19,6 +19,7 @@ from app.tools.layers import PROMOTE_OBJECT, SPLIT_LAYERS
 from app.tools.marketing import GENERATE_MARKETING, PREPARE_DELIVERY_SIZES
 from app.tools.region import ERASE_REGION, REPLACE_REGION
 from app.tools.retouch import ADJUST_IMAGE, REMOVE_BACKGROUND
+from app.tools.text import REPAIR_TEXT
 
 SPECS: tuple[ToolSpec, ...] = (
     GENERATE_IMAGE,
@@ -43,6 +44,7 @@ SPECS: tuple[ToolSpec, ...] = (
     SCALE_LAYER,
     ROTATE_LAYER,
     MOVE_LAYER,
+    REPAIR_TEXT,
 )
 
 _BY_NAME = {spec.name: spec for spec in SPECS}

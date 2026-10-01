@@ -6,6 +6,7 @@ import { ACTION_LABELS } from '@/api/sessions'
  */
 const UNDOABLE = new Set([
   'split_layers',
+  'repair_text',
   'promote_object_to_layer',
   'remove_background',
   'replace_background',

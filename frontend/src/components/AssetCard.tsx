@@ -17,7 +17,7 @@ export default function AssetCard({ asset, onSelect }: { asset: Asset; onSelect?
           className="size-full object-contain transition-transform group-hover:scale-[1.02]"
         />
         {asset.has_alpha && (
-          <span className="bg-ink/80 absolute top-2 left-2 rounded px-1.5 py-0.5 text-[10px] text-white">
+          <span className="bg-dark/80 absolute top-2 left-2 rounded px-1.5 py-0.5 text-[10px] text-white">
             透明底
           </span>
         )}

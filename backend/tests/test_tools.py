@@ -335,6 +335,47 @@ async def test_upscale_preserves_detected_text_without_repainting_or_splitting(
     assert output.getpixel((240, 240))[0] < 80
 
 
+async def test_repair_text_uses_ocr_mask_and_keeps_single_image_layer(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    """文字修复只生成 OCR 区域，并把结果写回单一底图，不拆出文字层。"""
+    from app.tools import text as text_tool
+
+    source = scene()
+
+    class PreservingProvider:
+        async def edit(self, request, on_progress=None):
+            return [request.image]
+
+    monkeypatch.setattr(
+        text_tool,
+        "detect_text",
+        lambda _data: [TextBox(text="中文", x=80, y=40, width=48, height=20)],
+    )
+    monkeypatch.setattr(text_tool, "get_image_provider", lambda: PreservingProvider())
+
+    session = await open_session(signed_in, image=source)
+    body = await invoke(signed_in, session["id"], "repair_text")
+    await run_tool({}, uuid.UUID(body["run"]["id"]))
+
+    updated = (await signed_in.get(f"/api/sessions/{session['id']}")).json()
+    assert [layer["id"] for layer in updated["document"]["layers"]] == ["base"]
+    assert updated["current_asset_id"] != session["current_asset_id"]
+
+
+async def test_repair_text_reports_when_ocr_finds_nothing(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    from app.tools import text as text_tool
+
+    monkeypatch.setattr(text_tool, "detect_text", lambda _data: [])
+    session = await open_session(signed_in)
+    body = await invoke(signed_in, session["id"], "repair_text")
+    await run_tool({}, uuid.UUID(body["run"]["id"]))
+
+    assert "未识别到文字区域" in await error_of(signed_in, body["run"]["id"])
+
+
 async def test_preparing_point_selection_is_accepted(signed_in: httpx.AsyncClient):
     session = await open_session(signed_in)
     response = await signed_in.post(f"/api/sessions/{session['id']}/selection/prepare")
