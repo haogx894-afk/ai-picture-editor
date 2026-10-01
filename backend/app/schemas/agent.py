@@ -48,6 +48,7 @@ class TurnOut(BaseModel):
     id: uuid.UUID
     resumed_from_id: uuid.UUID | None
     continuation_rounds: int
+    auto_continue: bool
     revision: int
     goal: str
     reply: str
@@ -62,6 +63,7 @@ class TurnOut(BaseModel):
             id=turn.id,
             resumed_from_id=turn.resumed_from_id,
             continuation_rounds=turn.continuation_rounds,
+            auto_continue=turn.auto_continue,
             revision=turn.revision,
             goal=turn.goal,
             reply=turn.reply,

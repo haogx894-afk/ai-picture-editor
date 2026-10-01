@@ -23,6 +23,7 @@ export type Turn = {
   id: string
   resumed_from_id: string | null
   continuation_rounds: number
+  auto_continue: boolean
   revision: number
   goal: string
   reply: string

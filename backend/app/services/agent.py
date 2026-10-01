@@ -21,7 +21,8 @@ _HISTORY_FIELD_LIMIT = 320
 _HISTORY_TOTAL_LIMIT = 4000
 _CONTINUE_EXACT = {"继续", "继续执行", "继续完成", "接着做"}
 _CONTINUE_MARKERS = ("上一步", "上一任务", "未完成", "没完成", "没做完", "失败任务")
-_MAX_CONTINUATION_ROUNDS = 4
+_MAX_CONTINUATION_ROUNDS = 8
+_CONTINUATION_PLANNING_ERROR = "续规划失败，请重新描述需求"
 
 
 class TurnNotFound(Exception):
@@ -126,6 +127,7 @@ async def _plan_and_store(
         error=error,
         resumed_from_id=resumed_from_id,
         continuation_rounds=0,
+        auto_continue=bool(steps) and _is_complex_goal(goal),
     )
     session.add(turn)
     await session.commit()
@@ -164,6 +166,38 @@ async def _continue_latest_failure(
             reply = "没有可继续的失败任务，请重新描述需求。"
         return await _notice(session, record, goal, reply)
 
+    if (
+        failed.error == _CONTINUATION_PLANNING_ERROR
+        and failed.plan
+        and all(step.get("status") == plan_mod.SUCCEEDED for step in failed.plan)
+    ):
+        if failed.revision != record.revision:
+            return await _plan_and_store(
+                session,
+                record,
+                failed.goal,
+                resumed_from_id=failed.id,
+                force_confirm=True,
+            )
+
+        turn = AgentRun(
+            user_id=record.user_id,
+            session_id=record.id,
+            revision=record.revision,
+            goal=failed.goal,
+            reply="继续规划上一次未完成的任务。",
+            plan=_copy(failed.plan),
+            status=RunStatus.RUNNING,
+            error=None,
+            resumed_from_id=failed.id,
+            continuation_rounds=failed.continuation_rounds,
+            auto_continue=True,
+        )
+        session.add(turn)
+        await session.commit()
+        await session.refresh(turn)
+        return await _advance(session, turn)
+
     if not any(step.get("status") == plan_mod.FAILED for step in failed.plan):
         return await _notice(session, record, goal, "最近任务没有可恢复步骤，请重新描述需求。")
 
@@ -200,6 +234,7 @@ async def _continue_latest_failure(
         error=None,
         resumed_from_id=failed.id,
         continuation_rounds=failed.continuation_rounds,
+        auto_continue=failed.auto_continue,
     )
     session.add(turn)
     await session.commit()
@@ -238,6 +273,7 @@ async def _notice(
         status=RunStatus.SUCCEEDED,
         error=None,
         continuation_rounds=0,
+        auto_continue=False,
     )
     session.add(turn)
     await session.commit()
@@ -430,6 +466,7 @@ async def _advance(session: AsyncSession, turn: AgentRun) -> AgentRun:
 async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> AgentRun:
     """Ask the planner for the next batch without creating another AgentRun."""
     if turn.continuation_rounds >= _MAX_CONTINUATION_ROUNDS:
+        turn.auto_continue = False
         turn.status = RunStatus.SUCCEEDED
         turn.reply = _append_reply(
             turn.reply,
@@ -443,19 +480,23 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
     record = await sessions.load(session, turn.session_id)
     completed = _completed_summary(turn.plan)
     planning_error = False
+    reply = ""
     try:
         reply, proposed = await agent.run(
             turn.goal,
             await describe(session, record),
             await history_for_planner(session, record),
             completed_steps=completed,
+            continuation_round=turn.continuation_rounds + 1,
         )
         proposed = await _pin_selection(session, record, proposed)
+        proposed = plan_mod.validate(proposed)
     except agent.PlannerUnavailable:
         proposed = []
         planning_error = True
     except Exception:
         logger.exception("续规划异常 session_id=%s turn_id=%s", record.id, turn.id)
+        reply = ""
         proposed = []
         planning_error = True
 
@@ -463,12 +504,18 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
     if not fresh:
         if planning_error:
             turn.status = RunStatus.FAILED
-            turn.error = "续规划失败，请重新描述需求"
+            turn.error = _CONTINUATION_PLANNING_ERROR
+            turn.auto_continue = False
             addition = "已完成部分任务，但后续规划失败，请重新描述未完成要求。"
         else:
             turn.status = RunStatus.SUCCEEDED
             turn.error = None
-            addition = "已完成部分任务，但没有可安全执行的后续步骤。请检查未完成要求后重新描述。"
+            turn.auto_continue = False
+            addition = (
+                reply.strip()
+                if not proposed and reply.strip() and not reply.strip().startswith("没太理解")
+                else "已完成部分任务，但没有可安全执行的后续步骤。请检查未完成要求后重新描述。"
+            )
         turn.reply = _append_reply(turn.reply, addition)
         _touch(turn)
         await session.commit()
@@ -487,7 +534,14 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
 
 def _should_continue(turn: AgentRun) -> bool:
     """Only complex goals opt into another planning round."""
-    goal = "".join(turn.goal.split())
+    if not turn.auto_continue or turn.continuation_rounds >= _MAX_CONTINUATION_ROUNDS:
+        return False
+    return _is_complex_goal(turn.goal)
+
+
+def _is_complex_goal(goal: str) -> bool:
+    """复杂目标才允许自动续规划，避免普通问答被重复送入模型。"""
+    goal = "".join(goal.split())
     numbered = sum(goal.count(f"{index}.") for index in range(1, 10))
     return len(goal) >= 80 or numbered >= 2 or any(
         mark in goal for mark in ("以下", "清单", "分别")

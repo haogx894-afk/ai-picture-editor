@@ -51,10 +51,12 @@ export function useSendMessage(sessionId: string) {
     mutationFn: (text: string) => agentApi.send(sessionId, text),
     onMutate: async (text) => {
       await queryClient.cancelQueries({ queryKey: turnsKey(sessionId) })
+      const previous = queryClient.getQueryData<Turn[]>(turnsKey(sessionId))
       const optimistic: Turn = {
         id: `optimistic-${crypto.randomUUID()}`,
         resumed_from_id: null,
         continuation_rounds: 0,
+        auto_continue: false,
         revision: 0,
         goal: text,
         reply: '',
@@ -65,7 +67,10 @@ export function useSendMessage(sessionId: string) {
         optimistic: true,
       }
       queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) => [...turns, optimistic])
-      return { optimisticId: optimistic.id }
+      return {
+        optimisticId: optimistic.id,
+        previous,
+      }
     },
     onSuccess: (turn, _text, context) => {
       queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) =>
@@ -74,9 +79,11 @@ export function useSendMessage(sessionId: string) {
     },
     onError: (_error, _text, context) => {
       if (!context) return
-      queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) =>
-        turns.filter((item) => item.id !== context.optimisticId),
-      )
+      if (context.previous === undefined) {
+        queryClient.removeQueries({ queryKey: turnsKey(sessionId), exact: true })
+      } else {
+        queryClient.setQueryData(turnsKey(sessionId), context.previous)
+      }
     },
     onSettled: refresh,
   })

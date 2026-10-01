@@ -537,6 +537,52 @@ async def test_continuation_planner_error_is_visible_as_failed(
     assert "续规划失败" in completed["error"]
 
 
+async def test_continuation_planner_failure_can_be_resumed_with_continue(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    """续规划失败本身没有失败工具步骤，也应能被“继续”恢复。"""
+    from app.services import agent as agent_service
+    from app.services import runs as run_service
+
+    class RecoveringPlanner:
+        def __init__(self):
+            self.calls = 0
+
+        async def ainvoke(self, _messages):
+            self.calls += 1
+            if self.calls == 1:
+                return tool_call("split_layers", {})
+            if self.calls == 2:
+                raise RuntimeError("planner unavailable")
+            return tool_call("flip_layer", {"direction": "horizontal"})
+
+    planner_instance = RecoveringPlanner()
+    monkeypatch.setattr(graph, "planner", lambda: planner_instance)
+
+    async def succeed(_session, run):
+        await run_service.finish(_session, run, status=RunStatus.SUCCEEDED, result={})
+        await agent_service.continue_plan(_session, run)
+
+    monkeypatch.setattr(tool_service, "execute", succeed)
+    session = await open_session(signed_in)
+    goal = "请按清单完成复杂修图任务：1. 先拆层；2. 再继续处理剩余修改。"
+
+    first = await send(signed_in, session["id"], goal)
+    await run_tool({}, uuid.UUID(first["steps"][0]["run_id"]))
+    failed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+    assert failed["status"] == "failed"
+    assert failed["steps"][0]["status"] == "succeeded"
+
+    resumed = await send(signed_in, session["id"], "继续")
+
+    assert resumed["id"] != failed["id"]
+    assert resumed["resumed_from_id"] == failed["id"]
+    assert resumed["status"] == "succeeded"
+    assert [step["tool"] for step in resumed["steps"]] == ["split_layers", "flip_layer"]
+    assert all(step["status"] == "succeeded" for step in resumed["steps"])
+    assert planner_instance.calls >= 3
+
+
 async def test_continuation_deduplicates_same_tool_and_params(
     signed_in: httpx.AsyncClient, monkeypatch
 ):

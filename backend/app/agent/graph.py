@@ -40,7 +40,8 @@ _SYSTEM = """你是电商图片修图助手，通过调用工具完成用户的�
 
 会话历史（仅摘要）：{history}
 
-本轮已完成步骤（续规划时提供）：{completed_steps}"""
+本轮已完成步骤（续规划时提供）：{completed_steps}
+续规划轮次：{continuation_round}"""
 
 _FALLBACK_REPLY = "没太理解这条指令，换个说法或说得更具体一些。"
 _REFUSAL_LIMIT = 60
@@ -51,6 +52,7 @@ class AgentState(TypedDict):
     context: str
     history: str
     completed_steps: str
+    continuation_round: int
     plan: list[dict]
     reply: str
 
@@ -63,6 +65,7 @@ async def _plan(state: AgentState) -> AgentState:
                     context=state["context"],
                     history=state["history"],
                     completed_steps=state["completed_steps"],
+                    continuation_round=state["continuation_round"],
                 )
             ),
             HumanMessage(state["goal"]),
@@ -99,6 +102,7 @@ async def run(
     context: str,
     history: str = "暂无历史记录",
     completed_steps: str = "暂无已完成步骤",
+    continuation_round: int = 0,
 ) -> tuple[str, list[dict]]:
     """规划并校验一轮指令，返回答复与尚未下发的计划。"""
     state = await _graph().ainvoke(
@@ -107,6 +111,7 @@ async def run(
             "context": context,
             "history": history,
             "completed_steps": completed_steps,
+            "continuation_round": continuation_round,
             "plan": [],
             "reply": "",
         }
