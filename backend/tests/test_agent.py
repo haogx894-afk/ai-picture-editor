@@ -409,6 +409,85 @@ async def test_long_goal_continues_planning_after_first_batch(
     assert goal in planner_instance.messages[1][1].content
 
 
+async def test_realistic_long_prompt_appends_batches_to_same_http_turn(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    """长提示词的后续批次应追加到同一个对话任务，并最终全部完成。"""
+    from app.services import agent as agent_service
+    from app.services import runs as run_service
+
+    planner_instance = SequencePlanner(
+        tool_call("split_layers", {}),
+        tool_calls(
+            ("remove_background", {}),
+            ("erase_region", {"prompt": "移除椅子下面的橘猫并自然补全地面"}),
+        ),
+        AIMessage(content="已完成所有可以安全执行的修改。"),
+    )
+    monkeypatch.setattr(graph, "planner", lambda: planner_instance)
+
+    async def succeed(_session, run):
+        await run_service.finish(_session, run, status=RunStatus.SUCCEEDED, result={})
+        await agent_service.continue_plan(_session, run)
+
+    monkeypatch.setattr(tool_service, "execute", succeed)
+    session = await open_session(signed_in)
+    goal = (
+        "请在当前图片上进行精确编辑并保持摄影真实性：1. 将风衣改成深墨绿色羊毛大衣；"
+        "2. 修正门头和挂牌文字；3. 把手表时间改为 21:45；4. 移除椅子下的橘猫及其阴影；"
+        "5. 在书页增加浅蓝色折纸鹤；6. 把玻璃倒影中的自行车改成黄色；"
+        "7. 将窗外的雨变成小雪；8. 修复雨伞柄在桌面上断开的错误，除此之外不要改变构图。"
+    )
+
+    initial = await send(signed_in, session["id"], goal)
+    assert initial["status"] == "running"
+    assert [step["tool"] for step in initial["steps"]] == ["split_layers"]
+    first_run_id = initial["steps"][0]["run_id"]
+
+    await run_tool({}, uuid.UUID(first_run_id))
+    after_first_batch = (
+        await signed_in.get(f"/api/sessions/{session['id']}/messages")
+    ).json()[-1]
+
+    assert after_first_batch["id"] == initial["id"]
+    assert [step["tool"] for step in after_first_batch["steps"]] == [
+        "split_layers",
+        "remove_background",
+        "erase_region",
+    ]
+    assert [step["status"] for step in after_first_batch["steps"]] == [
+        "succeeded",
+        "queued",
+        "pending",
+    ]
+
+    second_run_id = after_first_batch["steps"][1]["run_id"]
+    await run_tool({}, uuid.UUID(second_run_id))
+    after_second_batch = (
+        await signed_in.get(f"/api/sessions/{session['id']}/messages")
+    ).json()[-1]
+    assert [step["status"] for step in after_second_batch["steps"]] == [
+        "succeeded",
+        "succeeded",
+        "queued",
+    ]
+
+    third_run_id = after_second_batch["steps"][2]["run_id"]
+    await run_tool({}, uuid.UUID(third_run_id))
+    completed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+
+    assert completed["id"] == initial["id"]
+    assert completed["status"] == "succeeded"
+    assert [step["status"] for step in completed["steps"]] == [
+        "succeeded",
+        "succeeded",
+        "succeeded",
+    ]
+    assert planner_instance.messages[1][1].content == goal
+    assert "已完成当前批次" in completed["reply"]
+    assert len(planner_instance.messages) == 3
+
+
 async def test_short_goal_does_not_trigger_continuation_planning(
     signed_in: httpx.AsyncClient, fake_planner
 ):
