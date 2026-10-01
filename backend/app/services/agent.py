@@ -442,6 +442,7 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
 
     record = await sessions.load(session, turn.session_id)
     completed = _completed_summary(turn.plan)
+    planning_error = False
     try:
         reply, proposed = await agent.run(
             turn.goal,
@@ -452,17 +453,23 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
         proposed = await _pin_selection(session, record, proposed)
     except agent.PlannerUnavailable:
         proposed = []
+        planning_error = True
     except Exception:
         logger.exception("续规划异常 session_id=%s turn_id=%s", record.id, turn.id)
         proposed = []
+        planning_error = True
 
     fresh = _new_steps(turn.plan, proposed)
     if not fresh:
-        turn.status = RunStatus.SUCCEEDED
-        turn.reply = _append_reply(
-            turn.reply,
-            "已完成部分任务，但没有可安全执行的后续步骤。请检查未完成要求后重新描述。",
-        )
+        if planning_error:
+            turn.status = RunStatus.FAILED
+            turn.error = "续规划失败，请重新描述需求"
+            addition = "已完成部分任务，但后续规划失败，请重新描述未完成要求。"
+        else:
+            turn.status = RunStatus.SUCCEEDED
+            turn.error = None
+            addition = "已完成部分任务，但没有可安全执行的后续步骤。请检查未完成要求后重新描述。"
+        turn.reply = _append_reply(turn.reply, addition)
         _touch(turn)
         await session.commit()
         await session.refresh(turn)
