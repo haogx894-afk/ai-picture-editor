@@ -21,6 +21,7 @@ export default function CandidatesPage() {
         current_asset_id: picked,
         asset_ids: candidates.map((asset) => asset.id),
         title: prompt ?? undefined,
+        initial_prompt: prompt ?? undefined,
       },
       { onSuccess: (session) => navigate(`/editor/${session.id}`) },
     )

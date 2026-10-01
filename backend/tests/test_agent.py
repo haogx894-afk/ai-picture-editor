@@ -88,6 +88,22 @@ async def test_tool_call_is_planned_and_dispatched(signed_in: httpx.AsyncClient,
     assert "生成图片" in turn["reply"]
 
 
+async def test_upscale_request_does_not_automatically_split_layers(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake_planner(
+        tool_calls(
+            ("split_layers", {"include_text": True}),
+            ("upscale_image", {"scale": 2}),
+        )
+    )
+    session_id = (await open_session(signed_in))["id"]
+
+    turn = await send(signed_in, session_id, "超分并修复中文文字，不要改变原图结构")
+
+    assert [step["tool"] for step in turn["steps"]] == ["upscale_image"]
+
+
 async def test_marketing_tool_is_planned_and_dispatched(signed_in: httpx.AsyncClient, fake_planner):
     fake_planner(tool_call("generate_marketing", {"kind": "product"}))
     session_id = (await open_session(signed_in))["id"]

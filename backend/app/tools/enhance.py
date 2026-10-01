@@ -1,6 +1,11 @@
+import asyncio
+import io
+
+from PIL import Image, ImageFilter
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.edits.ocr import detect_text
 from app.edits.split import already_split
 from app.layers import BACKGROUND_LAYER_ID, LayerDocument, LayerKind
 from app.models.asset import AssetKind, AssetSource
@@ -101,12 +106,54 @@ async def upscale_image_exec(session: AsyncSession, run: ToolRun) -> dict:
     await runs.report(session, run, 15, "读取画布")
     source = await flatten_session(session, record)
     await runs.report(session, run, 30, "提升分辨率")
-    output = await get_image_provider().upscale(
-        source,
-        run.params["scale"],
-        on_progress=lambda progress, stage: _progress(session, run, progress, stage),
+    has_text_layer = any(
+        layer.kind is LayerKind.TEXT and layer.visible and (layer.text or layer.name)
+        for layer in canvas.layers
     )
+    has_detected_text = await asyncio.to_thread(_detect_text, source)
+    if has_text_layer or has_detected_text:
+        await runs.report(session, run, 55, "保留文字并放大")
+        output = await asyncio.to_thread(_safe_raster_upscale, source, run.params["scale"])
+        await runs.report(session, run, 90, "完成文字安全放大")
+    else:
+        output = await get_image_provider().upscale(
+            source,
+            run.params["scale"],
+            on_progress=lambda progress, stage: _progress(session, run, progress, stage),
+        )
     return await _store(session, run, [output], adopt_first=not _layered(canvas))
+
+
+def _detect_text(data: bytes) -> bool:
+    """OCR 失败不能阻断超分；能识别到文字时切换到无生成式路径。"""
+    try:
+        return bool(detect_text(data))
+    except Exception:
+        return False
+
+
+def _safe_raster_upscale(data: bytes, scale: int) -> bytes:
+    """用高质量重采样放大含文字图片，避免图像模型重绘汉字。"""
+    image = Image.open(io.BytesIO(data)).convert("RGBA")
+    width, height = _safe_size(image.width, image.height, scale)
+    enlarged = image.resize((width, height), Image.Resampling.LANCZOS)
+    enlarged = enlarged.filter(ImageFilter.UnsharpMask(radius=1.2, percent=115, threshold=3))
+    output = io.BytesIO()
+    enlarged.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _safe_size(width: int, height: int, scale: int) -> tuple[int, int]:
+    width, height = width * scale, height * scale
+    minimum = min(width, height)
+    if minimum < 512:
+        factor = 512 / minimum
+        width, height = round(width * factor), round(height * factor)
+    longest = max(width, height)
+    if longest > 2048:
+        factor = 2048 / longest
+        width, height = round(width * factor), round(height * factor)
+    return max(1, width), max(1, height)
 
 
 REPLACE_BACKGROUND = ToolSpec(
@@ -136,7 +183,10 @@ EXPAND_CANVAS = ToolSpec(
 UPSCALE_IMAGE = ToolSpec(
     name="upscale_image",
     label="超分",
-    description="提高当前画布分辨率。scale 为 2 或 4，默认 2 倍。不要用它换内容或改构图。",
+    description=(
+        "提高当前画布分辨率。scale 为 2 或 4，默认 2 倍。优先保留原有文字与构图，"
+        "不要重绘汉字，不要为了超分自动拆分图层。"
+    ),
     params=UpscaleImageIn,
     handler=upscale_image_exec,
     queued=True,

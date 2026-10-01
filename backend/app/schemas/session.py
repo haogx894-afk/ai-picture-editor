@@ -17,6 +17,7 @@ class SessionCreateIn(BaseModel):
     # 同批未采用的候选一并进图片墙
     asset_ids: Annotated[list[uuid.UUID], Field(max_length=MAX_WALL_ASSETS)] = []
     title: str | None = None
+    initial_prompt: Annotated[str | None, Field(max_length=1500)] = None
 
 
 class SessionPatchIn(BaseModel):

@@ -73,7 +73,14 @@ async def create_session(
         if asset_id != current.id
     ]
 
-    record = await sessions.create(session, user.id, current, wall, payload.title)
+    record = await sessions.create(
+        session,
+        user.id,
+        current,
+        wall,
+        payload.title,
+        initial_prompt=payload.initial_prompt,
+    )
     return await _detail(session, record)
 
 

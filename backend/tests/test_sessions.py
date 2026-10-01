@@ -35,6 +35,19 @@ async def test_new_session_starts_at_first_revision(signed_in: httpx.AsyncClient
     assert body["original_asset_id"] == body["current_asset_id"]
 
 
+async def test_initial_creation_prompt_is_retained_in_editor_messages(
+    signed_in: httpx.AsyncClient,
+):
+    prompt = "一瓶茉莉蜜茶放在白色花朵与绿色叶片之间，电商产品摄影"
+    body = await open_session(signed_in, title=prompt, initial_prompt=prompt)
+
+    messages = (await signed_in.get(f"/api/sessions/{body['id']}/messages")).json()
+
+    assert messages[0]["goal"] == prompt
+    assert messages[0]["status"] == "succeeded"
+    assert messages[0]["steps"] == []
+
+
 async def test_document_describes_current_image_as_base_layer(signed_in: httpx.AsyncClient):
     asset_id = await upload(signed_in, (400, 500))
 

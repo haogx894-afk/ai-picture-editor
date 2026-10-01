@@ -97,6 +97,7 @@ async def _plan_and_store(
             await history_for_planner(session, record),
         )
         steps = await _pin_selection(session, record, steps)
+        steps = plan_mod.validate(_protect_superres_text(goal, steps))
     except agent.PlannerUnavailable as exc:
         error = str(exc)
     except Exception:
@@ -492,6 +493,7 @@ async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> A
             continuation_round=turn.continuation_rounds + 1,
         )
         proposed = await _pin_selection(session, record, proposed)
+        proposed = _protect_superres_text(turn.goal, proposed)
         proposed = plan_mod.validate(proposed)
     except agent.PlannerUnavailable:
         proposed = []
@@ -548,6 +550,22 @@ def _is_complex_goal(goal: str) -> bool:
     return len(goal) >= 80 or numbered >= 2 or any(
         mark in goal for mark in ("以下", "清单", "分别")
     )
+
+
+def _protect_superres_text(goal: str, steps: list[dict]) -> list[dict]:
+    """超分默认不拆层；只有用户明确要求拆层时才允许该额外操作。"""
+    compact = "".join(goal.split())
+    if "超分" not in compact or "拆层" in compact or "分层" in compact:
+        return steps
+    return [
+        {
+            key: value
+            for key, value in step.items()
+            if key not in {"id", "depends_on", "run_id", "status", "approved"}
+        }
+        for step in steps
+        if step.get("tool") != "split_layers"
+    ]
 
 
 def _completed_summary(steps: list[dict]) -> str:

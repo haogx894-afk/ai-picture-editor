@@ -66,6 +66,7 @@ export type SessionCreateInput = {
   current_asset_id: string
   asset_ids?: string[]
   title?: string
+  initial_prompt?: string
 }
 
 export type SessionPatchInput = {

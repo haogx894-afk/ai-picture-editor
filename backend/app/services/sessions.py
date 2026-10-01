@@ -5,8 +5,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.layers import BASE_LAYER_ID, LayerDocument, document_of
-from app.models import Asset, EditHistory, EditSession, SessionAsset
+from app.models import AgentRun, Asset, EditHistory, EditSession, SessionAsset
 from app.models.edit_history import HISTORY_LIMIT
+from app.models.tool_run import RunStatus
 
 TITLE_LIMIT = 80
 DEFAULT_TITLE = "未命名会话"
@@ -177,6 +178,8 @@ async def create(
     current: Asset,
     wall: Iterable[Asset] = (),
     title: str | None = None,
+    *,
+    initial_prompt: str | None = None,
 ) -> EditSession:
     """新建会话。current 进入画布，wall 中其余图片仅进图片墙备选。"""
     record = EditSession(
@@ -198,6 +201,22 @@ async def create(
         {},
         {"asset_id": str(current.id), **snapshot(record)},
     )
+    prompt = (initial_prompt or "").strip()
+    if prompt:
+        # 初次创作发生在会话创建前，不能丢在 /generations 的 ToolRun 里；
+        # 用一条已完成的 AgentRun 让编辑页对话与后续指令共用同一历史链。
+        session.add(
+            AgentRun(
+                user_id=user_id,
+                session_id=record.id,
+                revision=record.revision,
+                goal=prompt,
+                reply="已生成候选图，已进入编辑。",
+                plan=[],
+                status=RunStatus.SUCCEEDED,
+                error=None,
+            )
+        )
     await session.commit()
     await session.refresh(record)
     return record

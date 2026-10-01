@@ -1,10 +1,18 @@
+import io
 import uuid
 
 import httpx
 import pytest
 from langchain_core.messages import AIMessage
+from PIL import Image, ImageDraw
 
+from app import storage
 from app.agent import graph
+from app.db import SessionFactory
+from app.edits.ocr import TextBox
+from app.models import Asset
+from app.services import assets as asset_service
+from app.services import sessions as session_service
 from app.tasks.tools import run_tool
 from tests.canvas import apply, error_of, invoke, layers, scene, select
 from tests.test_agent import FakePlanner
@@ -282,6 +290,49 @@ async def test_upscale_image_raises_resolution(signed_in: httpx.AsyncClient):
     assert updated["current_asset_id"] != session["current_asset_id"]
     assert (updated["document"]["width"], updated["document"]["height"]) == (640, 480)
     assert (current["width"], current["height"]) == (640, 480)
+
+
+async def test_upscale_preserves_detected_text_without_repainting_or_splitting(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    """检测到文字时走无生成式放大，避免模型重绘汉字并改变图层结构。"""
+    from app.tools import enhance
+
+    source = Image.new("RGBA", (32, 32), "white")
+    ImageDraw.Draw(source).rectangle((10, 10, 20, 20), fill="black")
+    source_bytes = io.BytesIO()
+    source.save(source_bytes, format="PNG")
+
+    class RepaintingProvider:
+        async def upscale(self, _image, _scale, on_progress=None):
+            painted = Image.new("RGBA", (64, 64), "red")
+            output = io.BytesIO()
+            painted.save(output, format="PNG")
+            return output.getvalue()
+
+    monkeypatch.setattr(
+        enhance,
+        "detect_text",
+        lambda _data: [TextBox(text="中文", x=10, y=10, width=11, height=11)],
+        raising=False,
+    )
+    monkeypatch.setattr(enhance, "get_image_provider", lambda: RepaintingProvider())
+
+    session = await open_session(signed_in, image=source_bytes.getvalue())
+    body = await invoke(signed_in, session["id"], "upscale_image", {"scale": 2})
+    await run_tool({}, uuid.UUID(body["run"]["id"]))
+
+    updated = (await signed_in.get(f"/api/sessions/{session['id']}")).json()
+    assert [layer["id"] for layer in updated["document"]["layers"]] == ["base"]
+
+    async with SessionFactory() as db:
+        record = await session_service.load(db, uuid.UUID(session["id"]))
+        asset = await asset_service.get_for_user(db, record.user_id, record.current_asset_id)
+        assert isinstance(asset, Asset)
+        output = Image.open(io.BytesIO(await storage.get(asset.storage_key))).convert("RGBA")
+
+    assert output.size == (512, 512)
+    assert output.getpixel((240, 240))[0] < 80
 
 
 async def test_preparing_point_selection_is_accepted(signed_in: httpx.AsyncClient):
