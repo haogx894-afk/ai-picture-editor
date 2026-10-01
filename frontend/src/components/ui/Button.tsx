@@ -36,21 +36,24 @@ export default function Button({
       title={title}
       aria-pressed={active}
       aria-busy={running || undefined}
-      className={[buttonClass({ variant, size, active: active || running, block }), className]
+      className={['button-motion', buttonClass({ variant, size, active: active || running, block }), className]
         .filter(Boolean)
         .join(' ')}
     >
-      {running && variant !== 'icon' ? (
-        <span className="flex items-center justify-center gap-1.5">
-          {children}
-          <span className="tabular-nums opacity-70">{Math.round(filled)}%</span>
-        </span>
-      ) : (
-        children
-      )}
+      <span className="relative z-10">
+        {running && variant !== 'icon' ? (
+          <span className="flex items-center justify-center gap-1.5">
+            {children}
+            <span className="tabular-nums opacity-70">{Math.round(filled)}%</span>
+          </span>
+        ) : (
+          children
+        )}
+      </span>
+      <span className="button-motion__shine" aria-hidden="true" />
       {running && (
         <span
-          className="bg-brand-strong/60 absolute bottom-0 left-0 h-[2px]"
+          className="bg-brand-strong/60 absolute bottom-0 left-0 z-20 h-[2px]"
           style={{ width: `${Math.max(filled, 4)}%` }}
         />
       )}

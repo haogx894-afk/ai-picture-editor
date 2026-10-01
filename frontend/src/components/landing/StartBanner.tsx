@@ -19,7 +19,7 @@ export default function StartBanner({ label, to }: { label: string; to: string }
 
           <Link
             to={to}
-            className="bg-accent text-ink rounded-control mt-8 inline-flex px-6 py-3 text-sm font-medium transition-opacity hover:opacity-90"
+            className="motion-button motion-button--soft mt-8 inline-flex px-6 py-3 text-sm"
           >
             {label}
           </Link>

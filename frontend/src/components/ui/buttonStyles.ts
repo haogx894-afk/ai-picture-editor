@@ -2,7 +2,7 @@ export type ButtonVariant = 'ghost' | 'solid' | 'outline' | 'icon'
 export type ButtonSize = 'sm' | 'md'
 
 const BASE =
-  'relative overflow-hidden font-medium transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100'
+  'relative overflow-hidden font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.97] focus-visible:ring-brand/50 focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100'
 
 const SHAPE: Record<ButtonSize, string> = {
   sm: 'rounded-chip px-2 py-1 text-[11px]',

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import type { PlanStep, StepStatus, Turn } from '@/api/agent'
 import { isTerminal } from '@/api/runs'
+import LatticeLoader from '@/components/LatticeLoader'
 import Button from '@/components/ui/Button'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { usePlanActions, useTurns } from '@/hooks/useAgent'
@@ -98,11 +99,21 @@ function TaskActivity({ turn }: { turn: Turn }) {
     >
       <div className="flex items-center gap-2 text-xs font-medium">
         {active ? (
-          <span className="border-brand size-3.5 shrink-0 animate-thinking-ring rounded-full border-[1.5px] border-r-transparent" />
+          <LatticeLoader
+            label={activity.message}
+            status="working"
+            pattern="orbit"
+            cellSize={3}
+            gap={1}
+            fontSize={11}
+            showTimer={false}
+            color="currentColor"
+            className="shrink-0"
+          />
         ) : (
           <span className="size-1.5 shrink-0 rounded-full bg-current" />
         )}
-        <span>{activity.message}</span>
+        {!active && <span>{activity.message}</span>}
       </div>
       {hasSteps && (
         <p className="mt-1 pl-5.5 text-[10px] opacity-70">
@@ -115,20 +126,17 @@ function TaskActivity({ turn }: { turn: Turn }) {
 
 function ThinkingIndicator() {
   return (
-    <div
-      className="text-brand-strong mr-6 flex items-center gap-2 text-xs"
-      role="status"
-      aria-label="思考中"
-    >
-      <span className="border-brand grid size-4 animate-thinking-ring rounded-full border-[1.5px] border-r-transparent" />
-      <span>
-        思考中
-        <span aria-hidden="true" className="inline-flex w-5">
-          <span className="animate-thinking-dot [animation-delay:0ms]">.</span>
-          <span className="animate-thinking-dot [animation-delay:180ms]">.</span>
-          <span className="animate-thinking-dot [animation-delay:360ms]">.</span>
-        </span>
-      </span>
+    <div className="text-brand-strong mr-6 text-xs" role="status" aria-label="思考中">
+      <LatticeLoader
+        label="思考中"
+        status="working"
+        pattern="orbit"
+        cellSize={4}
+        gap={1}
+        fontSize={12}
+        showTimer={false}
+        color="currentColor"
+      />
     </div>
   )
 }

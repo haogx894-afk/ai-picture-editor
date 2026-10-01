@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import Button from '@/components/ui/Button'
+import FuseButton from '@/components/FuseButton'
 
 export default function MessageComposer({
   pending,
@@ -38,9 +38,21 @@ export default function MessageComposer({
         aria-label="修图指令"
         className="border-line text-ink placeholder:text-faint rounded-control focus:border-line-strong w-full resize-none border px-3 py-2 text-xs leading-relaxed outline-none transition-colors"
       />
-      <Button variant="solid" block className="mt-2 py-2" disabled={!canSend} onClick={submit}>
-        {pending ? '思考中…' : '发送'}
-      </Button>
+      <div className="mt-2 flex justify-end">
+        <FuseButton
+          label={pending ? '思考中…' : '发送'}
+          icon={<span aria-hidden>↗</span>}
+          color="#ffffff"
+          background="#a855f7"
+          fuseColor="#e8ff77"
+          size="sm"
+          disabled={!canSend}
+          settle="reset"
+          commitOn="press"
+          onCommit={submit}
+          ariaLabel={pending ? '思考中' : '发送'}
+        />
+      </div>
       {error && <p className="text-danger mt-2 text-[11px] leading-relaxed">{error}</p>}
     </div>
   )

@@ -1,4 +1,5 @@
 import type { Asset, AssetKind } from '@/api/assets'
+import MicroThumbnail from '@/components/MicroThumbnail'
 
 const KIND_LABELS: Record<AssetKind, string> = {
   original: '原图',
@@ -34,9 +35,10 @@ export default function ImageWall({
           .map((asset) => {
           const active = asset.id === currentId
           return (
-            <button
+            <MicroThumbnail
               key={asset.id}
-              type="button"
+              asset={asset}
+              active={active}
               disabled={disabled || active}
               onClick={() => onPick(asset.id)}
               title={
@@ -44,22 +46,8 @@ export default function ImageWall({
                   ? `当前画布 · ${KIND_LABELS[asset.kind]}`
                   : `采用这张 · ${KIND_LABELS[asset.kind]} ${asset.width}×${asset.height}`
               }
-              className={`bg-canvas group rounded-chip relative size-16 shrink-0 overflow-hidden border-2 transition-all duration-150 disabled:cursor-default ${
-                active
-                  ? 'border-brand shadow-control'
-                  : 'border-line hover:border-brand hover:shadow-control active:scale-[0.97]'
-              }`}
-            >
-              <img
-                src={asset.url}
-                alt=""
-                loading="lazy"
-                className="size-full object-contain transition-transform duration-150 group-hover:scale-[1.03]"
-              />
-              <span className="bg-ink/70 absolute right-0 bottom-0 left-0 py-0.5 text-[10px] text-white">
-                {KIND_LABELS[asset.kind]}
-              </span>
-            </button>
+              label={KIND_LABELS[asset.kind]}
+            />
           )
         })}
       </div>

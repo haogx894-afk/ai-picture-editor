@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { RATIO_LABELS, type GenerateInput, type Ratio } from '@/api/runs'
+import FuseButton from '@/components/FuseButton'
 
 const RATIOS = Object.keys(RATIO_LABELS) as Ratio[]
 const COUNTS = [1, 2, 4, 6]
@@ -73,13 +74,18 @@ export default function GenerateForm({
           {advanced ? '收起排除项' : '排除项'}
         </button>
 
-        <button
+        <FuseButton
           type="submit"
+          label={pending ? '提交中…' : '生成'}
+          icon={<span aria-hidden>↗</span>}
+          color="#ffffff"
+          background="#a855f7"
+          fuseColor="#e8ff77"
+          size="sm"
           disabled={!canSubmit}
-          className="bg-ink hover:bg-dark rounded-control ml-auto px-4 py-2 text-sm font-medium text-white transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
-        >
-          {pending ? '提交中…' : '生成'}
-        </button>
+          settle="reset"
+          ariaLabel={pending ? '提交中' : '生成'}
+        />
       </div>
       <p className="text-faint px-3 pb-2 text-[11px]">
         {pending ? '任务已提交，稍后会跳到候选页' : '回车生成 · Shift+Enter 换行'}

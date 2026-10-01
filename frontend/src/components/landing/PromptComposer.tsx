@@ -1,5 +1,7 @@
 import type { RefObject } from 'react'
 
+import FuseButton from '@/components/FuseButton'
+
 function AttachIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="size-4" aria-hidden>
@@ -75,13 +77,19 @@ export default function PromptComposer({
 
         <div className="flex items-center gap-3">
           <span className="text-faint hidden text-xs sm:block">Enter 发送 · Shift + Enter 换行</span>
-          <button
-            type="submit"
-            className="bg-ink hover:bg-dark rounded-control flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white transition-colors"
-          >
-            {submitLabel}
-            <SubmitIcon />
-          </button>
+          <FuseButton
+            type="button"
+            label={submitLabel}
+            icon={<SubmitIcon />}
+            color="#ffffff"
+            background="#a855f7"
+            fuseColor="#e8ff77"
+            size="sm"
+            settle="reset"
+            commitOn="press"
+            onCommit={onSubmit}
+            ariaLabel={submitLabel}
+          />
         </div>
       </div>
     </form>
