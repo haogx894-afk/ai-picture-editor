@@ -1,7 +1,13 @@
 from functools import lru_cache
 
 from app.config import get_settings
-from app.providers.base import EditRequest, GenerateRequest, ImageProvider, ProviderError
+from app.providers.base import (
+    ContentSafetyError,
+    EditRequest,
+    GenerateRequest,
+    ImageProvider,
+    ProviderError,
+)
 from app.providers.mock import MockImageProvider
 
 
@@ -24,6 +30,7 @@ __all__ = [
     "EditRequest",
     "GenerateRequest",
     "ImageProvider",
+    "ContentSafetyError",
     "ProviderError",
     "get_image_provider",
 ]

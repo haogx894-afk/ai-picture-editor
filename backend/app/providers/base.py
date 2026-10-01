@@ -9,6 +9,10 @@ class ProviderError(Exception):
     """模型服务不可用或返回失败。"""
 
 
+class ContentSafetyError(ProviderError):
+    """模型服务因内容安全审核拒绝了请求或生成结果。"""
+
+
 @dataclass(frozen=True)
 class GenerateRequest:
     prompt: str

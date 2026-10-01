@@ -1,12 +1,14 @@
 import asyncio
 import base64
 import io
+import logging
 
 import httpx
 from PIL import Image
 
 from app.config import get_settings
 from app.providers.base import (
+    ContentSafetyError,
     EditRequest,
     GenerateRequest,
     ImageProvider,
@@ -24,8 +26,21 @@ _EDIT_TIMEOUT = 180.0
 _POLL_INTERVAL = 3.0
 _POLL_TIMEOUT = 300.0
 _TERMINAL = {"SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"}
+_CONTENT_SAFETY_MESSAGE = "图片内容安全审核未通过：生成结果被平台安全策略拦截，请修改提示词后重试。"
+_CONTENT_SAFETY_MARKERS = (
+    "green net",
+    "content safety",
+    "safety check",
+    "moderation",
+    "data inspection",
+    "datainspection",
+    "内容安全",
+    "安全审核",
+)
 
 _PENDING = (10, "排队中")
+
+logger = logging.getLogger(__name__)
 
 
 class DashScopeImageProvider(ImageProvider):
@@ -152,7 +167,7 @@ class DashScopeImageProvider(ImageProvider):
 
             if status in _TERMINAL:
                 if status != "SUCCEEDED":
-                    raise ProviderError(f"生成任务{status}：{output.get('message', '未知原因')}")
+                    raise _task_failure(status, output)
                 return _extract_urls(output)
 
             if on_progress:
@@ -182,8 +197,43 @@ class DashScopeImageProvider(ImageProvider):
             raise ProviderError(f"模型服务返回非 JSON 响应（HTTP {response.status_code}）") from exc
 
         if response.status_code != httpx.codes.OK or "code" in body:
-            raise ProviderError(body.get("message") or f"模型服务错误 HTTP {response.status_code}")
+            raise _response_failure(body, response.status_code)
         return body
+
+
+def _task_failure(status: str, output: dict) -> ProviderError:
+    detail = output.get("message") or "未知原因"
+    if _is_content_safety_failure(output):
+        logger.warning(
+            "DashScope content safety rejection: status=%s code=%s message=%s",
+            status,
+            output.get("code"),
+            detail,
+        )
+        return ContentSafetyError(_CONTENT_SAFETY_MESSAGE)
+    return ProviderError(f"生成任务{status}：{detail}")
+
+
+def _response_failure(body: dict, status_code: int) -> ProviderError:
+    detail = body.get("message") or f"模型服务错误 HTTP {status_code}"
+    if _is_content_safety_failure(body):
+        logger.warning(
+            "DashScope content safety rejection: code=%s message=%s",
+            body.get("code"),
+            detail,
+        )
+        return ContentSafetyError(_CONTENT_SAFETY_MESSAGE)
+    return ProviderError(detail)
+
+
+def _is_content_safety_failure(payload: dict) -> bool:
+    """识别供应商的审核拒绝，不改变供应商的安全决策。"""
+    fields = [payload.get(key) for key in ("code", "message", "sub_code", "type")]
+    output = payload.get("output")
+    if isinstance(output, dict):
+        fields.extend(output.get(key) for key in ("code", "message", "sub_code", "type"))
+    text = " ".join(str(value) for value in fields if value).lower()
+    return any(marker in text for marker in _CONTENT_SAFETY_MARKERS)
 
 
 def _extract_urls(output: dict) -> list[str]:
