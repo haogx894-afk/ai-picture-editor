@@ -446,7 +446,9 @@ async def _advance(session: AsyncSession, turn: AgentRun) -> AgentRun:
     settled = RunStatus(plan_mod.settle(steps))
     if settled is RunStatus.SUCCEEDED and _should_continue(turn):
         turn.plan = steps
-        turn.status = settled
+        # 当前批次结束不代表整轮任务结束。先落库为 running，让轮询端在等待
+        # 下一轮规划模型时仍能准确显示「正在规划」，而不是误报已完成。
+        turn.status = RunStatus.RUNNING
         _touch(turn)
         await session.commit()
         await session.refresh(turn)

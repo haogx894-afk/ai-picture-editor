@@ -19,6 +19,20 @@ export type PlanStep = {
   status: StepStatus
 }
 
+export type TurnActivity = {
+  phase:
+    | 'planning'
+    | 'executing'
+    | 'awaiting_confirmation'
+    | 'completed'
+    | 'failed'
+    | 'canceled'
+  message: string
+  completed_steps: number
+  total_steps: number
+  current_step_id: string | null
+}
+
 export type Turn = {
   id: string
   resumed_from_id: string | null
@@ -31,6 +45,7 @@ export type Turn = {
   error: string | null
   created_at: string
   steps: PlanStep[]
+  activity: TurnActivity
   /** 仅前端乐观消息使用，服务端 Turn 不会返回该字段。 */
   optimistic?: boolean
 }

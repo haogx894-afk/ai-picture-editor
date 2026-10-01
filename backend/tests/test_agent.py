@@ -488,6 +488,58 @@ async def test_realistic_long_prompt_appends_batches_to_same_http_turn(
     assert len(planner_instance.messages) == 3
 
 
+async def test_turn_stays_running_and_reports_planning_between_batches(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    """工具批次结束到续规划返回之间，不能向前端伪装成已完成。"""
+    from app.services import agent as agent_service
+    from app.services import runs as run_service
+
+    class BlockingContinuationPlanner:
+        def __init__(self):
+            self.calls = 0
+            self.planning = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def ainvoke(self, _messages):
+            self.calls += 1
+            if self.calls == 1:
+                return tool_call("split_layers", {})
+            self.planning.set()
+            await self.release.wait()
+            return AIMessage(content="已检查剩余要求，当前没有其他安全步骤。")
+
+    planner_instance = BlockingContinuationPlanner()
+    monkeypatch.setattr(graph, "planner", lambda: planner_instance)
+
+    async def succeed(_session, run):
+        await run_service.finish(_session, run, status=RunStatus.SUCCEEDED, result={})
+        await agent_service.continue_plan(_session, run)
+
+    monkeypatch.setattr(tool_service, "execute", succeed)
+    session = await open_session(signed_in)
+    turn = await send(
+        signed_in,
+        session["id"],
+        "请按清单完成复杂修图任务：1. 先拆层；2. 检查并继续处理剩余修改。",
+    )
+
+    worker = asyncio.create_task(run_tool({}, uuid.UUID(turn["steps"][0]["run_id"])))
+    await asyncio.wait_for(planner_instance.planning.wait(), timeout=1)
+    try:
+        during = (
+            await signed_in.get(f"/api/sessions/{session['id']}/messages")
+        ).json()[-1]
+
+        assert during["status"] == "running"
+        assert during["activity"]["phase"] == "planning"
+        assert "规划" in during["activity"]["message"]
+        assert during["activity"]["completed_steps"] == 1
+    finally:
+        planner_instance.release.set()
+        await worker
+
+
 async def test_short_goal_does_not_trigger_continuation_planning(
     signed_in: httpx.AsyncClient, fake_planner
 ):

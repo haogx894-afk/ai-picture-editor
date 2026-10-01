@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -44,6 +44,70 @@ class PlanStepOut(BaseModel):
         )
 
 
+class TurnActivityOut(BaseModel):
+    phase: Literal[
+        "planning",
+        "executing",
+        "awaiting_confirmation",
+        "completed",
+        "failed",
+        "canceled",
+    ]
+    message: str
+    completed_steps: int
+    total_steps: int
+    current_step_id: str | None = None
+
+    @classmethod
+    def of(cls, turn: AgentRun, steps: list[PlanStepOut]) -> "TurnActivityOut":
+        completed = sum(step.status == "succeeded" for step in steps)
+        total = len(steps)
+
+        if turn.status is RunStatus.RUNNING:
+            for index, step in enumerate(steps, start=1):
+                if step.status in {"queued", "running"}:
+                    return cls(
+                        phase="executing",
+                        message=f"正在执行第 {index}/{total} 步：{step.label}",
+                        completed_steps=completed,
+                        total_steps=total,
+                        current_step_id=step.id,
+                    )
+            return cls(
+                phase="planning",
+                message="正在检查剩余要求并规划后续步骤…",
+                completed_steps=completed,
+                total_steps=total,
+            )
+
+        if turn.status is RunStatus.QUEUED:
+            waiting = next((step for step in steps if step.status == "waiting"), None)
+            return cls(
+                phase="awaiting_confirmation",
+                message="计划已生成，等待确认后继续执行",
+                completed_steps=completed,
+                total_steps=total,
+                current_step_id=waiting.id if waiting else None,
+            )
+
+        messages = {
+            RunStatus.SUCCEEDED: "任务已完成",
+            RunStatus.FAILED: "任务执行失败",
+            RunStatus.CANCELED: "任务已取消",
+        }
+        phases = {
+            RunStatus.SUCCEEDED: "completed",
+            RunStatus.FAILED: "failed",
+            RunStatus.CANCELED: "canceled",
+        }
+        return cls(
+            phase=phases[turn.status],
+            message=messages[turn.status],
+            completed_steps=completed,
+            total_steps=total,
+        )
+
+
 class TurnOut(BaseModel):
     id: uuid.UUID
     resumed_from_id: uuid.UUID | None
@@ -56,9 +120,11 @@ class TurnOut(BaseModel):
     error: str | None
     created_at: datetime
     steps: list[PlanStepOut] = []
+    activity: TurnActivityOut
 
     @classmethod
     def of(cls, turn: AgentRun) -> "TurnOut":
+        steps = [PlanStepOut.of(step) for step in turn.plan]
         return cls(
             id=turn.id,
             resumed_from_id=turn.resumed_from_id,
@@ -70,5 +136,6 @@ class TurnOut(BaseModel):
             status=turn.status,
             error=turn.error,
             created_at=turn.created_at,
-            steps=[PlanStepOut.of(step) for step in turn.plan],
+            steps=steps,
+            activity=TurnActivityOut.of(turn, steps),
         )

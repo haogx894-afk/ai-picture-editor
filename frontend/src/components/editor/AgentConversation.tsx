@@ -25,7 +25,7 @@ export default function AgentConversation({ sessionId }: { sessionId: string }) 
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' })
-  }, [turns.length, latest?.status])
+  }, [turns.length, latest?.status, latest?.activity.phase])
 
   if (isPending) {
     return <p className="text-faint min-h-0 flex-1 px-4 py-4 text-xs">加载中…</p>
@@ -64,11 +64,51 @@ function TurnBlock({ turn, sessionId }: { turn: Turn; sessionId: string }) {
         <p className="text-ink mr-6 text-xs leading-relaxed">{turn.reply}</p>
       )}
 
+      {!turn.optimistic && <TaskActivity turn={turn} />}
+
       {!turn.optimistic && turn.steps.map((step, index) => (
         <StepCard key={step.id} index={index + 1} step={step} sessionId={sessionId} />
       ))}
 
       {!turn.optimistic && <PlanActions turn={turn} sessionId={sessionId} />}
+    </div>
+  )
+}
+
+function TaskActivity({ turn }: { turn: Turn }) {
+  const { activity } = turn
+  const active = activity.phase === 'planning' || activity.phase === 'executing'
+  const hasSteps = activity.total_steps > 0
+  if (!hasSteps && activity.phase === 'completed') return null
+
+  const tone =
+    activity.phase === 'failed'
+      ? 'border-danger/25 bg-danger/5 text-danger'
+      : activity.phase === 'completed'
+        ? 'border-success/25 bg-success/5 text-success'
+        : activity.phase === 'canceled'
+          ? 'border-line bg-soft text-muted'
+          : 'border-brand/25 bg-brand-soft/55 text-brand-strong'
+
+  return (
+    <div
+      className={`mr-6 rounded-[12px] border px-3 py-2 ${tone}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-2 text-xs font-medium">
+        {active ? (
+          <span className="border-brand size-3.5 shrink-0 animate-thinking-ring rounded-full border-[1.5px] border-r-transparent" />
+        ) : (
+          <span className="size-1.5 shrink-0 rounded-full bg-current" />
+        )}
+        <span>{activity.message}</span>
+      </div>
+      {hasSteps && (
+        <p className="mt-1 pl-5.5 text-[10px] opacity-70">
+          已完成 {activity.completed_steps}/{activity.total_steps} 步
+        </p>
+      )}
     </div>
   )
 }

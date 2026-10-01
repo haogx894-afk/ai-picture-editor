@@ -64,6 +64,13 @@ export function useSendMessage(sessionId: string) {
         error: null,
         created_at: new Date().toISOString(),
         steps: [],
+        activity: {
+          phase: 'planning',
+          message: '正在理解你的要求并制定执行计划…',
+          completed_steps: 0,
+          total_steps: 0,
+          current_step_id: null,
+        },
         optimistic: true,
       }
       queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) => [...turns, optimistic])
