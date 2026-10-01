@@ -29,6 +29,7 @@ class AgentRun(UUIDBase):
         default=None,
         index=True,
     )
+    continuation_rounds: Mapped[int] = mapped_column(default=0, server_default="0")
     # 规划开始或最近一次成功步骤观察到的修订号，用于判断失败后画布是否被改动
     revision: Mapped[int]
     goal: Mapped[str] = mapped_column(Text)

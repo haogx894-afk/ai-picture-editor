@@ -47,6 +47,7 @@ class PlanStepOut(BaseModel):
 class TurnOut(BaseModel):
     id: uuid.UUID
     resumed_from_id: uuid.UUID | None
+    continuation_rounds: int
     revision: int
     goal: str
     reply: str
@@ -60,6 +61,7 @@ class TurnOut(BaseModel):
         return cls(
             id=turn.id,
             resumed_from_id=turn.resumed_from_id,
+            continuation_rounds=turn.continuation_rounds,
             revision=turn.revision,
             goal=turn.goal,
             reply=turn.reply,

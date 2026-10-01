@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 
@@ -20,6 +21,7 @@ _HISTORY_FIELD_LIMIT = 320
 _HISTORY_TOTAL_LIMIT = 4000
 _CONTINUE_EXACT = {"继续", "继续执行", "继续完成", "接着做"}
 _CONTINUE_MARKERS = ("上一步", "上一任务", "未完成", "没完成", "没做完", "失败任务")
+_MAX_CONTINUATION_ROUNDS = 4
 
 
 class TurnNotFound(Exception):
@@ -123,6 +125,7 @@ async def _plan_and_store(
         status=status,
         error=error,
         resumed_from_id=resumed_from_id,
+        continuation_rounds=0,
     )
     session.add(turn)
     await session.commit()
@@ -196,6 +199,7 @@ async def _continue_latest_failure(
         status=RunStatus.RUNNING,
         error=None,
         resumed_from_id=failed.id,
+        continuation_rounds=failed.continuation_rounds,
     )
     session.add(turn)
     await session.commit()
@@ -233,6 +237,7 @@ async def _notice(
         plan=[],
         status=RunStatus.SUCCEEDED,
         error=None,
+        continuation_rounds=0,
     )
     session.add(turn)
     await session.commit()
@@ -402,8 +407,17 @@ async def _advance(session: AsyncSession, turn: AgentRun) -> AgentRun:
             await session.commit()
             progressed = run.status is RunStatus.SUCCEEDED
 
+    settled = RunStatus(plan_mod.settle(steps))
+    if settled is RunStatus.SUCCEEDED and _should_continue(turn):
+        turn.plan = steps
+        turn.status = settled
+        _touch(turn)
+        await session.commit()
+        await session.refresh(turn)
+        return await _continue_successful_batch(session, turn)
+
     turn.plan = steps
-    turn.status = RunStatus(plan_mod.settle(steps))
+    turn.status = settled
     waiting = any(step["status"] == plan_mod.WAITING for step in steps)
     if turn.status is RunStatus.QUEUED and waiting:
         turn.reply = turn.reply or "下一步需要确认后再执行。"
@@ -411,6 +425,105 @@ async def _advance(session: AsyncSession, turn: AgentRun) -> AgentRun:
     await session.commit()
     await session.refresh(turn)
     return turn
+
+
+async def _continue_successful_batch(session: AsyncSession, turn: AgentRun) -> AgentRun:
+    """Ask the planner for the next batch without creating another AgentRun."""
+    if turn.continuation_rounds >= _MAX_CONTINUATION_ROUNDS:
+        turn.status = RunStatus.SUCCEEDED
+        turn.reply = _append_reply(
+            turn.reply,
+            f"已完成当前批次，但已达到连续规划上限（{_MAX_CONTINUATION_ROUNDS} 轮）。",
+        )
+        _touch(turn)
+        await session.commit()
+        await session.refresh(turn)
+        return turn
+
+    record = await sessions.load(session, turn.session_id)
+    completed = _completed_summary(turn.plan)
+    try:
+        reply, proposed = await agent.run(
+            turn.goal,
+            await describe(session, record),
+            await history_for_planner(session, record),
+            completed_steps=completed,
+        )
+        proposed = await _pin_selection(session, record, proposed)
+    except agent.PlannerUnavailable:
+        proposed = []
+    except Exception:
+        logger.exception("续规划异常 session_id=%s turn_id=%s", record.id, turn.id)
+        proposed = []
+
+    fresh = _new_steps(turn.plan, proposed)
+    if not fresh:
+        turn.status = RunStatus.SUCCEEDED
+        turn.reply = _append_reply(
+            turn.reply,
+            "已完成部分任务，但没有可安全执行的后续步骤。请检查未完成要求后重新描述。",
+        )
+        _touch(turn)
+        await session.commit()
+        await session.refresh(turn)
+        return turn
+
+    turn.continuation_rounds += 1
+    turn.plan = [*turn.plan, *fresh]
+    turn.status = RunStatus.RUNNING
+    labels = "、".join(label_of(step["tool"], step.get("params")) for step in fresh)
+    turn.reply = _append_reply(turn.reply, f"已完成当前批次，继续处理：{labels}。")
+    _touch(turn)
+    await session.commit()
+    return await _advance(session, turn)
+
+
+def _should_continue(turn: AgentRun) -> bool:
+    """Only complex goals opt into another planning round."""
+    goal = "".join(turn.goal.split())
+    numbered = sum(goal.count(f"{index}.") for index in range(1, 10))
+    return len(goal) >= 80 or numbered >= 2 or any(
+        mark in goal for mark in ("以下", "清单", "分别")
+    )
+
+
+def _completed_summary(steps: list[dict]) -> str:
+    completed = [
+        f"{label_of(step['tool'], step.get('params'))}[{step.get('status', plan_mod.PENDING)}]"
+        for step in steps
+        if step.get("status") == plan_mod.SUCCEEDED
+    ]
+    return "、".join(completed) if completed else "暂无已完成步骤"
+
+
+def _new_steps(existing: list[dict], proposed: list[dict]) -> list[dict]:
+    known = {_step_key(step) for step in existing}
+    fresh: list[dict] = []
+    previous = existing[-1]["id"] if existing else None
+    next_index = len(existing) + 1
+    for source in proposed:
+        if _step_key(source) in known:
+            continue
+        step = dict(source)
+        step["id"] = f"s{next_index}"
+        step["depends_on"] = [previous] if previous else []
+        step["run_id"] = None
+        step["status"] = plan_mod.PENDING
+        step.pop("approved", None)
+        fresh.append(step)
+        known.add(_step_key(source))
+        previous = step["id"]
+        next_index += 1
+    return fresh
+
+
+def _step_key(step: dict) -> tuple[str, str]:
+    return step["tool"], json.dumps(step.get("params") or {}, sort_keys=True, separators=(",", ":"))
+
+
+def _append_reply(current: str, addition: str) -> str:
+    current = current.rstrip("。 ")
+    return f"{current}；{addition}" if current else addition
 
 
 async def _cancel_queued_runs(session: AsyncSession, steps: list[dict]) -> None:

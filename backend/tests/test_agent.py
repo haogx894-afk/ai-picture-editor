@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage
 from app.agent import graph
 from app.agent.llm import planner
 from app.config import get_settings
+from app.models.tool_run import RunStatus
 from app.services import tools as tool_service
 from app.tasks.tools import run_tool
 from tests.canvas import apply, error_of, layers, scene, select, settle
@@ -23,6 +24,18 @@ class FakePlanner:
     async def ainvoke(self, messages):
         self.messages = messages
         return self._message
+
+
+class SequencePlanner:
+    def __init__(self, *messages: AIMessage) -> None:
+        self._messages = list(messages)
+        self.messages: list[list] = []
+
+    async def ainvoke(self, messages):
+        self.messages.append(messages)
+        if len(self.messages) <= len(self._messages):
+            return self._messages[len(self.messages) - 1]
+        return self._messages[-1]
 
 
 @pytest.fixture
@@ -351,6 +364,127 @@ async def test_queued_step_unblocks_the_next(signed_in: httpx.AsyncClient, fake_
     assert finished["status"] == "succeeded"
     assert [step["status"] for step in finished["steps"]] == ["succeeded", "succeeded"]
     assert updated["document"]["layers"][0]["transform"]["scale_x"] == -1
+
+
+async def test_long_goal_continues_planning_after_first_batch(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    from app.services import runs as run_service
+
+    planner_instance = SequencePlanner(
+        tool_call("split_layers", {}),
+        tool_call("flip_layer", {"direction": "horizontal"}),
+        AIMessage(content="这张图已完成，没有其它安全可执行步骤。"),
+    )
+    monkeypatch.setattr(graph, "planner", lambda: planner_instance)
+
+    async def succeed(_session, run):
+        await run_service.finish(
+            _session, run, status=RunStatus.SUCCEEDED, result={}
+        )
+        from app.services import agent as agent_service
+
+        await agent_service.continue_plan(_session, run)
+
+    monkeypatch.setattr(tool_service, "execute", succeed)
+    session = await open_session(signed_in)
+    goal = (
+        "请按清单完成这张图片的复杂修图任务：1. 先拆分人物和背景；"
+        "2. 再水平翻转主体；3. 保持其它内容不变。"
+    )
+
+    turn = await send(signed_in, session["id"], goal)
+    assert len(planner_instance.messages) == 1
+    assert turn["status"] == "running"
+    first_run_id = turn["steps"][0]["run_id"]
+
+    await run_tool({}, uuid.UUID(first_run_id))
+    completed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+
+    assert len(planner_instance.messages) == 3
+    assert completed["status"] == "succeeded"
+    assert [step["tool"] for step in completed["steps"]] == ["split_layers", "flip_layer"]
+    assert all(step["status"] == "succeeded" for step in completed["steps"])
+    assert "拆层" in planner_instance.messages[1][0].content
+    assert goal in planner_instance.messages[1][1].content
+
+
+async def test_short_goal_does_not_trigger_continuation_planning(
+    signed_in: httpx.AsyncClient, fake_planner
+):
+    fake = fake_planner(tool_call("flip_layer", {"direction": "horizontal"}))
+    session = await open_session(signed_in)
+
+    turn = await send(signed_in, session["id"], "水平翻转")
+
+    assert turn["status"] == "succeeded"
+    assert fake.messages
+
+
+async def test_continuation_deduplicates_same_tool_and_params(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    from app.services import runs as run_service
+
+    planner_instance = SequencePlanner(
+        tool_call("split_layers", {}),
+        tool_call("split_layers", {}),
+    )
+    monkeypatch.setattr(graph, "planner", lambda: planner_instance)
+
+    async def succeed(_session, run):
+        await run_service.finish(_session, run, status=RunStatus.SUCCEEDED, result={})
+        from app.services import agent as agent_service
+
+        await agent_service.continue_plan(_session, run)
+
+    monkeypatch.setattr(tool_service, "execute", succeed)
+    session = await open_session(signed_in)
+    turn = await send(
+        signed_in,
+        session["id"],
+        "请按清单完成复杂任务：1. 拆层；2. 保持图层结构不变。",
+    )
+
+    await run_tool({}, uuid.UUID(turn["steps"][0]["run_id"]))
+    completed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+
+    assert len(planner_instance.messages) == 2
+    assert len(completed["steps"]) == 1
+    assert "没有可安全执行" in completed["reply"]
+
+
+async def test_continuation_stops_after_real_tool_failure(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    from app.services import runs as run_service
+
+    planner_instance = SequencePlanner(
+        tool_call("split_layers", {}),
+        tool_call("flip_layer", {"direction": "horizontal"}),
+    )
+    monkeypatch.setattr(graph, "planner", lambda: planner_instance)
+
+    async def fail(_session, run):
+        await run_service.finish(_session, run, status=RunStatus.FAILED, error="工具失败")
+        from app.services import agent as agent_service
+
+        await agent_service.continue_plan(_session, run)
+
+    monkeypatch.setattr(tool_service, "execute", fail)
+    session = await open_session(signed_in)
+    turn = await send(
+        signed_in,
+        session["id"],
+        "请按清单完成复杂任务：1. 拆层；2. 再水平翻转。",
+    )
+
+    await run_tool({}, uuid.UUID(turn["steps"][0]["run_id"]))
+    failed = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+
+    assert len(planner_instance.messages) == 1
+    assert failed["status"] == "failed"
+    assert failed["steps"][0]["status"] == "failed"
 
 
 async def test_two_layers_in_one_turn_share_the_same_selection(

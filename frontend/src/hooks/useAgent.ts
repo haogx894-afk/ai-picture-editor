@@ -54,6 +54,7 @@ export function useSendMessage(sessionId: string) {
       const optimistic: Turn = {
         id: `optimistic-${crypto.randomUUID()}`,
         resumed_from_id: null,
+        continuation_rounds: 0,
         revision: 0,
         goal: text,
         reply: '',
