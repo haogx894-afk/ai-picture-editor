@@ -44,7 +44,17 @@ async def submit(
 
     run = await runs.create(session, user_id, tool, validate(tool, params), session_id)
     if spec.queued:
-        await enqueue(TASK, run.id)
+        try:
+            await enqueue(TASK, run.id)
+        except Exception:
+            run_id = run.id
+            run = await runs.load(session, run_id)
+            await runs.finish(
+                session,
+                run,
+                status=RunStatus.FAILED,
+                error="队列提交失败，请重试",
+            )
     else:
         await execute(session, run)
         await session.refresh(run)

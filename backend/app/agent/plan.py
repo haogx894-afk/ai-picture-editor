@@ -68,16 +68,16 @@ def ready(steps: list[dict]) -> list[dict]:
 def settle(steps: list[dict]) -> str:
     """根据步骤状态汇总整轮计划。"""
     statuses = [step["status"] for step in steps]
-    if any(status in _OPEN for status in statuses):
-        if any(status == WAITING for status in statuses) and not any(
-            status in {QUEUED, RUNNING} for status in statuses
-        ):
-            return QUEUED
+    if any(status in {QUEUED, RUNNING} for status in statuses):
         return RUNNING
     if any(status == FAILED for status in statuses):
         return FAILED
     if any(status == CANCELED for status in statuses):
         return CANCELED
+    if any(status == WAITING for status in statuses):
+        return QUEUED
+    if any(status == PENDING for status in statuses):
+        return RUNNING
     return SUCCEEDED
 
 

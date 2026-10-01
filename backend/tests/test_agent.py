@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import httpx
@@ -7,6 +8,7 @@ from langchain_core.messages import AIMessage
 from app.agent import graph
 from app.agent.llm import planner
 from app.config import get_settings
+from app.services import tools as tool_service
 from app.tasks.tools import run_tool
 from tests.canvas import apply, error_of, layers, scene, select, settle
 from tests.test_sessions import open_session
@@ -548,3 +550,73 @@ async def test_continue_ignores_a_newer_running_notice_and_resumes_failure(
 
     assert resumed["resumed_from_id"] == failed["id"]
     assert resumed["status"] == "running"
+
+
+async def test_worker_interruption_marks_tool_and_agent_as_failed(
+    signed_in: httpx.AsyncClient, fake_planner, monkeypatch
+):
+    fake_planner(tool_call("remove_background", {}))
+    session = await open_session(signed_in)
+    turn = await send(signed_in, session["id"], "去除背景")
+
+    async def interrupted(*_args, **_kwargs):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(tool_service, "execute", interrupted)
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_tool({}, uuid.UUID(turn["steps"][0]["run_id"]))
+
+    run = (await signed_in.get(f"/api/runs/{turn['steps'][0]['run_id']}"))
+    assert run.status_code == 200
+    assert run.json()["status"] == "failed"
+    assert "中断" in (run.json()["error"] or "")
+
+    message = (await signed_in.get(f"/api/sessions/{session['id']}/messages")).json()[-1]
+    assert message["status"] == "failed"
+    assert message["steps"][0]["status"] == "failed"
+
+
+async def test_queue_failure_marks_tool_as_failed(
+    signed_in: httpx.AsyncClient, monkeypatch
+):
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(tool_service, "enqueue", unavailable)
+    session = await open_session(signed_in)
+
+    response = await signed_in.post(
+        f"/api/sessions/{session['id']}/tools",
+        json={"tool": "remove_background", "params": {}},
+    )
+
+    assert response.status_code == 202, response.text
+    run = response.json()["run"]
+    assert run["status"] == "failed"
+    assert "队列" in (run["error"] or "")
+
+
+async def test_failed_step_does_not_leave_dependent_plan_running(
+    signed_in: httpx.AsyncClient, fake_planner, monkeypatch
+):
+    fake_planner(
+        tool_calls(
+            ("remove_background", {}),
+            ("flip_layer", {"direction": "horizontal"}),
+        )
+    )
+
+    async def unavailable(*_args, **_kwargs):
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(tool_service, "enqueue", unavailable)
+    session = await open_session(signed_in)
+
+    turn = await send(signed_in, session["id"], "去除背景后水平翻转")
+    turn = (
+        await signed_in.post(f"/api/sessions/{session['id']}/messages/{turn['id']}/confirm")
+    ).json()
+
+    assert turn["status"] == "failed"
+    assert [step["status"] for step in turn["steps"]] == ["failed", "pending"]
