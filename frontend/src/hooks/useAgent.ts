@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { agentApi } from '@/api/agent'
+import { agentApi, type Turn } from '@/api/agent'
 import { isTerminal } from '@/api/runs'
 
 const turnsKey = (sessionId: string) => ['session', sessionId, 'messages']
@@ -21,8 +21,10 @@ export function useTurns(sessionId: string) {
     queryKey: turnsKey(sessionId),
     queryFn: () => agentApi.turns(sessionId),
     // 第一步 SSE 结束时下一步可能还没写进计划，整轮 running 时接着拉，避免卡片停在「等待中」
-    refetchInterval: (current) =>
-      current.state.data?.at(-1)?.status === 'running' ? 800 : false,
+    refetchInterval: (current) => {
+      const latest = current.state.data?.at(-1)
+      return latest?.status === 'running' && !latest?.optimistic ? 800 : false
+    },
   })
 
   const latest = query.data?.at(-1)?.status
@@ -43,10 +45,39 @@ export function useTurns(sessionId: string) {
 }
 
 export function useSendMessage(sessionId: string) {
+  const queryClient = useQueryClient()
   const refresh = useRefreshTurn(sessionId)
   return useMutation({
     mutationFn: (text: string) => agentApi.send(sessionId, text),
-    onSuccess: refresh,
+    onMutate: async (text) => {
+      await queryClient.cancelQueries({ queryKey: turnsKey(sessionId) })
+      const optimistic: Turn = {
+        id: `optimistic-${crypto.randomUUID()}`,
+        resumed_from_id: null,
+        revision: 0,
+        goal: text,
+        reply: '',
+        status: 'running',
+        error: null,
+        created_at: new Date().toISOString(),
+        steps: [],
+        optimistic: true,
+      }
+      queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) => [...turns, optimistic])
+      return { optimisticId: optimistic.id }
+    },
+    onSuccess: (turn, _text, context) => {
+      queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) =>
+        turns.map((item) => (item.id === context?.optimisticId ? turn : item)),
+      )
+    },
+    onError: (_error, _text, context) => {
+      if (!context) return
+      queryClient.setQueryData<Turn[]>(turnsKey(sessionId), (turns = []) =>
+        turns.filter((item) => item.id !== context.optimisticId),
+      )
+    },
+    onSettled: refresh,
   })
 }
 

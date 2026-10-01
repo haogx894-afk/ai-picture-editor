@@ -40,6 +40,8 @@
   --animate-slide-in: slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-slide-out: slide-out 0.2s ease-in both;
   --animate-fade-in: fade-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-thinking-ring: thinking-ring 0.9s linear infinite;
+  --animate-thinking-dot: thinking-dot 1.1s ease-in-out infinite;
 
   @keyframes rise {
     from {
@@ -101,6 +103,23 @@
       opacity: 0;
     }
     to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes thinking-ring {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes thinking-dot {
+    0%,
+    60%,
+    100% {
+      opacity: 0.25;
+    }
+    30% {
       opacity: 1;
     }
   }

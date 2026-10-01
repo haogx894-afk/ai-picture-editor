@@ -29,6 +29,8 @@ export type Turn = {
   error: string | null
   created_at: string
   steps: PlanStep[]
+  /** 仅前端乐观消息使用，服务端 Turn 不会返回该字段。 */
+  optimistic?: boolean
 }
 
 export const agentApi = {
