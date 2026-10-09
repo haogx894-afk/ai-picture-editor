@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-const QR_URL = import.meta.env.VITE_CONTACT_QQ_QR_URL as string | undefined
+// Use the bundled QR image by default; deployments can override it with a URL.
+const QR_URL = (import.meta.env.VITE_CONTACT_QQ_QR_URL as string | undefined) || '/qq-qr.jpg'
 
 export default function ContactSupport({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false)
