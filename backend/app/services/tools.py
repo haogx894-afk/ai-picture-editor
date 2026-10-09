@@ -5,11 +5,12 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.layers import LayerDocument
-from app.models import Asset, ToolRun
+from app.models import Asset, ToolRun, User
 from app.models.tool_run import RunStatus
 from app.providers import ProviderError
 from app.queue import enqueue
 from app.services import assets, runs, sessions
+from app.services.quota import consume_edit
 from app.tools import UnknownTool, spec_of
 from app.tools.context import ToolError
 
@@ -42,7 +43,12 @@ async def submit(
     if spec.session_required and session_id is None:
         raise InvalidParams("此工具需要在编辑会话中使用")
 
-    run = await runs.create(session, user_id, tool, validate(tool, params), session_id)
+    checked_params = validate(tool, params)
+    user = await session.get(User, user_id)
+    if user is None:
+        raise InvalidParams("用户不存在")
+    await consume_edit(session, user)
+    run = await runs.create(session, user_id, tool, checked_params, session_id)
     if spec.queued:
         try:
             await enqueue(TASK, run.id)

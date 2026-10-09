@@ -31,7 +31,9 @@ async def register(credentials: Credentials, response: Response, session: Sessio
         user = await auth_service.register(session, credentials.username, credentials.password)
     except auth_service.UsernameTaken:
         raise HTTPException(status.HTTP_409_CONFLICT, "该用户名已被占用") from None
-    return _start_session(response, user)
+    if user.can_use_workspace:
+        return _start_session(response, user)
+    return UserOut.model_validate(user)
 
 
 @router.post("/login")
@@ -40,6 +42,13 @@ async def login(credentials: Credentials, response: Response, session: SessionDe
         user = await auth_service.authenticate(session, credentials.username, credentials.password)
     except auth_service.InvalidCredentials:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户名或密码错误") from None
+    except auth_service.AccountNotApproved as exc:
+        messages = {
+            "pending": "账号正在等待管理员审核",
+            "rejected": "账号审核未通过",
+            "suspended": "账号已被暂停使用",
+        }
+        raise HTTPException(status.HTTP_403_FORBIDDEN, messages[exc.status.value]) from None
     return _start_session(response, user)
 
 

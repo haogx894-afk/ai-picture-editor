@@ -20,7 +20,9 @@ export function useCurrentUser() {
 
 export function useAuthActions() {
   const queryClient = useQueryClient()
-  const cacheUser = (user: User) => queryClient.setQueryData(ME_KEY, user)
+  const cacheUser = (user: User) => {
+    if (user.status === 'approved' || user.is_admin) queryClient.setQueryData(ME_KEY, user)
+  }
 
   const login = useMutation({
     mutationFn: (body: Credentials) => authApi.login(body),

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import BrandMark from '@/components/BrandMark'
+import ContactSupport from '@/components/ContactSupport'
 import { ThemeToggle } from '@/components/ThemeProvider'
 
 export default function LandingHeader({ account }: { account: string | null }) {
@@ -15,6 +16,7 @@ export default function LandingHeader({ account }: { account: string | null }) {
 
         <div className="flex items-center gap-3">
           <ThemeToggle />
+          <ContactSupport compact />
           {account ? (
             <Link
               to="/create"

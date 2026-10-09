@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,15 +8,24 @@ from fastapi.staticfiles import StaticFiles
 
 from app import storage
 from app.config import get_settings
+from app.db import SessionFactory
 from app.queue import close_queue
-from app.routers import assets, auth, batches, events, health, runs, sessions
+from app.routers import admin, assets, auth, batches, events, health, runs, sessions
+from app.services import auth as auth_service
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await asyncio.to_thread(storage.ensure_bucket)
+    if settings.admin_password:
+        try:
+            async with SessionFactory() as session:
+                await auth_service.ensure_admin(session)
+        except Exception:
+            logger.exception("管理员账号初始化失败")
     yield
     await close_queue()
 
@@ -34,6 +44,7 @@ api.include_router(assets.router)
 api.include_router(runs.router)
 api.include_router(sessions.router)
 api.include_router(batches.router)
+api.include_router(admin.router)
 app.include_router(api)
 
 # SSE 不挂在 /api 下，便于反向代理单独关闭缓冲

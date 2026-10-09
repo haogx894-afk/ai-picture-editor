@@ -43,12 +43,26 @@ export default function AuthPage() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
 
   if (!isLoading && user) return <Navigate to="/create" replace />
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
-    action.mutate({ username, password }, { onSuccess: () => navigate('/create', { replace: true }) })
+    setNotice(null)
+    action.mutate(
+      { username, password },
+      {
+        onSuccess: (result) => {
+          if (mode === 'register' && result.status === 'pending') {
+            setNotice('注册申请已提交，请等待管理员审核通过后再登录。')
+            setPassword('')
+            return
+          }
+          navigate('/create', { replace: true })
+        },
+      },
+    )
   }
 
   const switchMode = () => {
@@ -92,6 +106,7 @@ export default function AuthPage() {
             />
 
             {action.isError && <p className="text-danger text-sm">{errorMessage(action.error)}</p>}
+            {notice && <p className="text-brand-strong text-sm leading-relaxed">{notice}</p>}
 
             <button
               type="submit"

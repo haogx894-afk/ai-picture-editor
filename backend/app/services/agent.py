@@ -12,6 +12,7 @@ from app.layers import Layer, LayerDocument, LayerKind
 from app.models import AgentRun, EditSession, ToolRun
 from app.models.tool_run import RunStatus
 from app.services import assets, runs, selections, sessions, tools
+from app.services.quota import QuotaExceeded
 from app.tools import label_of, spec_of
 
 logger = logging.getLogger(__name__)
@@ -430,9 +431,20 @@ async def _advance(session: AsyncSession, turn: AgentRun) -> AgentRun:
             if spec_of(step["tool"]).needs_approval and not step.get("approved"):
                 step["status"] = plan_mod.WAITING
                 continue
-            run = await tools.submit(
-                session, turn.user_id, step["tool"], step["params"], turn.session_id
-            )
+            try:
+                run = await tools.submit(
+                    session, turn.user_id, step["tool"], step["params"], turn.session_id
+                )
+            except QuotaExceeded:
+                step["status"] = plan_mod.FAILED
+                turn.plan = steps
+                turn.status = RunStatus.FAILED
+                turn.error = "修图额度已用尽，请联系管理员升级套餐"
+                turn.reply = turn.error
+                _touch(turn)
+                await session.commit()
+                await session.refresh(turn)
+                return turn
             step["run_id"] = str(run.id)
             step["status"] = run.status.value
             if run.status is RunStatus.SUCCEEDED:

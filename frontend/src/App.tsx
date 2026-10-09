@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import RequireAuth from '@/layouts/RequireAuth'
+import RequireAdmin from '@/layouts/RequireAdmin'
 import WorkbenchLayout from '@/layouts/WorkbenchLayout'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import AuthPage from '@/pages/AuthPage'
@@ -10,6 +11,7 @@ import CreatePage from '@/pages/CreatePage'
 import EditorPage from '@/pages/EditorPage'
 import LandingPage from '@/pages/LandingPage'
 import MarketingPage from '@/pages/MarketingPage'
+import AdminPage from '@/pages/AdminPage'
 
 export default function App() {
   return (
@@ -30,6 +32,10 @@ export default function App() {
               <Route path="/batch/:runId" element={<BatchPage />} />
               <Route path="/candidates/:runId" element={<CandidatesPage />} />
             </Route>
+          </Route>
+
+          <Route element={<RequireAdmin />}>
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

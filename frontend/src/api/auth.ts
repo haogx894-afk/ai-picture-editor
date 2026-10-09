@@ -1,6 +1,20 @@
 import { api } from '@/api/client'
 
-export type User = { id: string; username: string }
+export type UserStatus = 'pending' | 'approved' | 'rejected' | 'suspended'
+export type UserPlan = 'free' | 'vip' | 'svip'
+export type User = {
+  id: string
+  username: string
+  status: UserStatus
+  is_admin: boolean
+  plan: UserPlan
+  agent_input_limit: number
+  agent_input_used: number
+  agent_output_limit: number
+  agent_output_used: number
+  edit_limit: number
+  edit_used: number
+}
 export type Credentials = { username: string; password: string }
 
 export const authApi = {

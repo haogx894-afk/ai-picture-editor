@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import BrandMark from '@/components/BrandMark'
+import ContactSupport from '@/components/ContactSupport'
 import { ThemeToggle } from '@/components/ThemeProvider'
 import ToastHost from '@/components/ToastHost'
 import { useAuthActions, useCurrentUser } from '@/hooks/useAuth'
@@ -60,9 +61,12 @@ export default function WorkbenchLayout() {
                 </NavLink>
               </li>
             ))}
+            {user?.is_admin && <li><NavLink to="/admin" title="用户管理" className={({ isActive }) => `flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm transition-colors ${isActive ? 'bg-brand-soft text-brand-strong font-medium' : 'text-muted hover:bg-soft hover:text-ink'}`}><NavIcon path="M4 6h16M4 12h16M4 18h16" /><span className="truncate opacity-0 transition-opacity group-hover:opacity-100">用户管理</span></NavLink></li>}
           </ul>
 
           <div className="border-line mt-2 border-t px-2 pt-3">
+            <div className="mb-2 flex justify-center"><ContactSupport compact /></div>
+            <div className="text-muted mb-2 px-1 text-center text-[10px] opacity-0 transition-opacity group-hover:opacity-100">{user?.plan.toUpperCase()} · Agent {user?.agent_input_used}/{user?.agent_input_limit} · 修图 {user?.edit_used}/{user?.edit_limit}</div>
             <div className="mb-2 flex justify-center">
               <ThemeToggle />
             </div>

@@ -28,6 +28,7 @@ from app.services import assets as asset_service
 from app.services import exports, selections, sessions, tools
 from app.services.agent import CannotCancel, CannotConfirm, CannotRetry, TurnNotFound
 from app.services.exports import UnknownExportAsset
+from app.services.quota import QuotaExceeded, consume_agent_turn
 from app.services.selections import EmptySelection, StaleSelection
 from app.services.sessions import CannotRedo, CannotUndo, SessionNotFound
 from app.services.tools import InvalidParams
@@ -190,6 +191,11 @@ async def invoke_tool(
     record = await _load(session, user, session_id)
     try:
         run = await tools.submit(session, user.id, payload.tool, payload.params, record.id)
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            _quota_message(exc.resource),
+        ) from exc
     except UnknownTool as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except InvalidParams as exc:
@@ -260,6 +266,13 @@ async def send_message(
     session_id: uuid.UUID, payload: MessageIn, user: CurrentUser, session: SessionDep
 ) -> TurnOut:
     record = await _load(session, user, session_id)
+    try:
+        await consume_agent_turn(session, user)
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            _quota_message(exc.resource),
+        ) from exc
     return TurnOut.of(await agent_service.respond(session, record, payload.text))
 
 
@@ -300,3 +313,11 @@ async def retry_plan(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "对话不存在") from exc
     except CannotRetry as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, "没有失败的步骤可重试") from exc
+
+
+def _quota_message(resource: str) -> str:
+    return {
+        "agent_input": "Agent 消息额度已用尽，请联系管理员升级套餐",
+        "agent_output": "Agent 输出额度已用尽，请联系管理员升级套餐",
+        "edit": "修图额度已用尽，请联系管理员升级套餐",
+    }.get(resource, "账号额度已用尽，请联系管理员")

@@ -10,6 +10,7 @@ from app.schemas.batch import BatchIn, BatchOut
 from app.schemas.run import RunOut
 from app.services import batch, runs, tools
 from app.services.batch import EmptyBatch, UnknownBatchAsset
+from app.services.quota import QuotaExceeded
 from app.services.runs import RunNotFound
 from app.services.tools import InvalidParams
 from app.tools.batch import BATCH_NAME
@@ -25,6 +26,11 @@ async def create_batch(payload: BatchIn, user: CurrentUser, session: SessionDep)
         raise HTTPException(status.HTTP_404_NOT_FOUND, "素材不存在") from exc
     try:
         run = await tools.submit(session, user.id, BATCH_NAME, payload.model_dump(mode="json"))
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "修图额度已用尽，请联系管理员升级套餐",
+        ) from exc
     except InvalidParams as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return RunOut.of(run)

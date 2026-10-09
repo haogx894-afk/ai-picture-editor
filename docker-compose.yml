@@ -50,6 +50,20 @@ services:
       retries: 10
 
   # 以下两个仅在部署时启用：docker compose --profile deploy up -d
+  migrate:
+    profiles: ["deploy"]
+    build: .
+    command: alembic upgrade head
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://retouch:retouch_dev@postgres:5432/retouch
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+
   app:
     profiles: ["deploy"]
     build: .
@@ -66,6 +80,7 @@ services:
     volumes:
       - cv_models:/root/.u2net
     depends_on:
+      migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
@@ -84,6 +99,7 @@ services:
     volumes:
       - cv_models:/root/.u2net
     depends_on:
+      migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }

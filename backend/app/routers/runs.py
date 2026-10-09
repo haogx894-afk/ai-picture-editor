@@ -10,6 +10,7 @@ from app.schemas.asset import AssetOut
 from app.schemas.run import GenerateIn, RunOut
 from app.services import assets as asset_service
 from app.services import runs, tools
+from app.services.quota import QuotaExceeded
 from app.services.runs import RunNotFound
 from app.tools import GENERATE_IMAGE
 
@@ -32,7 +33,18 @@ async def create_generation(payload: GenerateIn, user: CurrentUser, session: Ses
         if await asset_service.get_for_user(session, user.id, asset_id) is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "参考图不存在")
 
-    run = await tools.submit(session, user.id, GENERATE_IMAGE.name, payload.model_dump(mode="json"))
+    try:
+        run = await tools.submit(
+            session,
+            user.id,
+            GENERATE_IMAGE.name,
+            payload.model_dump(mode="json"),
+        )
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "修图额度已用尽，请联系管理员升级套餐",
+        ) from exc
     return RunOut.of(run)
 
 

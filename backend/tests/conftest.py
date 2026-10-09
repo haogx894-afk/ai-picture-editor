@@ -51,6 +51,29 @@ def skip_ocr():
     settings.ocr_provider = original
 
 
+@pytest.fixture(autouse=True)
+def local_registration_mode():
+    """现有 API 测试默认直接创建可用账号；审核流程单独覆盖设置。"""
+    settings = get_settings()
+    original = (
+        settings.require_registration_approval,
+        settings.free_agent_input_limit,
+        settings.free_agent_output_limit,
+        settings.free_edit_limit,
+    )
+    settings.require_registration_approval = False
+    settings.free_agent_input_limit = 1000
+    settings.free_agent_output_limit = 1000
+    settings.free_edit_limit = 1000
+    yield
+    (
+        settings.require_registration_approval,
+        settings.free_agent_input_limit,
+        settings.free_agent_output_limit,
+        settings.free_edit_limit,
+    ) = original
+
+
 def _test_redis_url(url: str) -> str:
     head, _, tail = url.rpartition("/")
     return f"{head}/{TEST_REDIS_DB}" if tail.isdigit() else f"{url.rstrip('/')}/{TEST_REDIS_DB}"

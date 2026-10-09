@@ -5,7 +5,7 @@ from app.models.asset import Asset
 from app.models.edit_history import EditHistory
 from app.models.edit_session import EditSession, SessionAsset
 from app.models.tool_run import ToolRun
-from app.models.user import User
+from app.models.user import User, UserPlan, UserStatus
 
 __all__ = [
     "AgentRun",
@@ -15,4 +15,6 @@ __all__ = [
     "SessionAsset",
     "ToolRun",
     "User",
+    "UserPlan",
+    "UserStatus",
 ]

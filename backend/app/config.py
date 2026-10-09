@@ -30,6 +30,20 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-secret-please-change-in-production"
     jwt_ttl_hours: int = 24
 
+    # 生产环境建议保持开启；开发测试可显式关闭
+    require_registration_approval: bool = True
+    admin_username: str = "hgx"
+    admin_password: str = ""
+    free_agent_input_limit: int = 2
+    free_agent_output_limit: int = 2
+    free_edit_limit: int = 2
+    vip_agent_input_limit: int = 100
+    vip_agent_output_limit: int = 100
+    vip_edit_limit: int = 100
+    svip_agent_input_limit: int = 500
+    svip_agent_output_limit: int = 500
+    svip_edit_limit: int = 500
+
     # image provider: mock | dashscope
     image_provider: str = "mock"
     dashscope_api_key: str = ""
