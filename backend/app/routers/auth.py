@@ -19,7 +19,7 @@ def _start_session(response: Response, user: User) -> UserOut:
         max_age=settings.jwt_ttl_hours * 3600,
         httponly=True,
         samesite="lax",
-        secure=settings.is_production,
+        secure=settings.cookie_secure,
         path="/",
     )
     return UserOut.model_validate(user)

@@ -31,11 +31,10 @@ export default function App() {
               <Route path="/batch" element={<BatchPage />} />
               <Route path="/batch/:runId" element={<BatchPage />} />
               <Route path="/candidates/:runId" element={<CandidatesPage />} />
+              <Route element={<RequireAdmin />}>
+                <Route path="/admin" element={<AdminPage />} />
+              </Route>
             </Route>
-          </Route>
-
-          <Route element={<RequireAdmin />}>
-            <Route path="/admin" element={<AdminPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

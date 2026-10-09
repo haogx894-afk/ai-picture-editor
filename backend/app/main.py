@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import storage
 from app.config import get_settings
@@ -15,6 +16,18 @@ from app.services import auth as auth_service
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve index.html for client-side routes such as /admin and /editor/:id."""
+
+    async def get_response(self, path: str, scope):  # type: ignore[no-untyped-def]
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and scope["method"] in {"GET", "HEAD"}:
+                return await super().get_response("index.html", scope)
+            raise
 
 
 @asynccontextmanager
@@ -52,4 +65,4 @@ app.include_router(events.router)
 
 # 生产环境下前端与 API 同源，静态产物由本服务托管；开发环境走 Vite dev proxy。
 if settings.frontend_dist.is_dir():
-    app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
+    app.mount("/", SPAStaticFiles(directory=settings.frontend_dist, html=True), name="frontend")

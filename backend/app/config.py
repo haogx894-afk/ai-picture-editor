@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     # HS256 要求密钥不短于 32 字节
     jwt_secret: str = "dev-only-secret-please-change-in-production"
     jwt_ttl_hours: int = 24
+    # 直连 HTTP 的公网 IP 部署需要关闭 Secure Cookie；启用 HTTPS 后应设为 true。
+    session_cookie_secure: bool | None = None
 
     # 生产环境建议保持开启；开发测试可显式关闭
     require_registration_approval: bool = True
@@ -60,6 +62,12 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def cookie_secure(self) -> bool:
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.is_production
 
     @property
     def frontend_dist(self) -> Path:

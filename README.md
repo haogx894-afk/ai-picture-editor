@@ -164,6 +164,7 @@ uv run pytest
 ```bash
 cp .env.example .env
 # 生产环境必改：JWT_SECRET（openssl rand -hex 32）、S3_PUBLIC_ENDPOINT=http://你的公网IP:7313
+# 直连 HTTP 公网 IP 时增加 SESSION_COOKIE_SECURE=false；配置 HTTPS 后改为 true
 # 上线前配置管理员账号；ADMIN_PASSWORD 只写服务器上的 .env，不要提交到 Git
 # ADMIN_USERNAME=hgx
 # ADMIN_PASSWORD=请在服务器密钥管理器或 .env 中填写
