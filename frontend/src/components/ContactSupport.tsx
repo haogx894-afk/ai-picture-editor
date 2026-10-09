@@ -38,7 +38,7 @@ export default function ContactSupport({ compact = false }: { compact?: boolean 
                 管理员尚未配置 QQ 二维码
               </div>
             )}
-            <p className="text-ink mt-5 text-sm font-medium">请扫码添加 QQ，备注“AI 修图”</p>
+            <p className="text-ink mt-5 text-sm font-medium">请扫码添加微信，备注“AI 修图”</p>
             <p className="text-muted mt-1 text-xs">工作时间内会尽快回复你的问题</p>
           </section>
         </div>
