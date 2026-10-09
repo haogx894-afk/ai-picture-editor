@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     vip_edit_limit: int = 100
     svip_agent_input_limit: int = 500
     svip_agent_output_limit: int = 500
-    svip_edit_limit: int = 500
+    svip_edit_limit: int = 4
 
     # image provider: mock | dashscope
     image_provider: str = "mock"
