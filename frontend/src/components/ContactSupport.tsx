@@ -27,7 +27,7 @@ export default function ContactSupport({ compact = false }: { compact?: boolean 
             <div className="flex items-center justify-between gap-4 text-left">
               <div>
                 <h2 id="contact-support-title" className="text-ink text-lg font-semibold">联系客服</h2>
-                <p className="text-muted mt-1 text-xs">添加 QQ，获取人工帮助</p>
+                <p className="text-muted mt-1 text-xs">添加 微信，获取人工帮助</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-ink text-xl" aria-label="关闭">×</button>
             </div>
