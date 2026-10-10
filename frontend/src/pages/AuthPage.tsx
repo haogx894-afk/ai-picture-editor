@@ -81,7 +81,7 @@ export default function AuthPage() {
 
         <div className="border-line bg-paper rounded-panel shadow-panel border p-8">
           <BrandMark size="sm">
-            <span className="text-ink text-sm font-semibold">AI 修图智能体</span>
+            <span className="text-ink text-sm font-semibold">织像 AI</span>
           </BrandMark>
 
           <h1 className="text-ink mt-6 text-2xl font-semibold tracking-tight">{copy.title}</h1>

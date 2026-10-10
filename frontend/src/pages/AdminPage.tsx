@@ -35,7 +35,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen px-6 py-8 md:px-10">
       <header className="mx-auto flex max-w-6xl items-center justify-between">
-        <Link to="/create" aria-label="返回工作台"><BrandMark size="sm"><span className="text-ink text-sm font-semibold">AI 修图智能体 · 管理</span></BrandMark></Link>
+        <Link to="/create" aria-label="返回工作台"><BrandMark size="sm"><span className="text-ink text-sm font-semibold">织像 AI · 管理</span></BrandMark></Link>
         <ContactSupport compact />
       </header>
 

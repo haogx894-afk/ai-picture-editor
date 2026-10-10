@@ -1,4 +1,4 @@
-# AI 修图智能体
+# 织像 AI（RetouchLoom）
 
 
 ## 一、项目介绍

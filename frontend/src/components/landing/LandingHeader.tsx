@@ -7,10 +7,10 @@ import { ThemeToggle } from '@/components/ThemeProvider'
 export default function LandingHeader({ account }: { account: string | null }) {
   return (
     <header className="border-line/70 bg-canvas/80 sticky top-0 z-10 border-b backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3.5">
-        <Link to="/" aria-label="AI 修图智能体首页">
-          <BrandMark size="sm">
-            <span className="text-ink text-sm font-semibold">AI 修图智能体</span>
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5 lg:px-10">
+        <Link to="/" aria-label="织像 AI 首页">
+          <BrandMark size="md">
+            <span className="text-ink text-sm font-semibold">织像 AI</span>
           </BrandMark>
         </Link>
 

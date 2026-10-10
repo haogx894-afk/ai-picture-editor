@@ -36,7 +36,7 @@ export default function WorkbenchLayout() {
         <div className="group border-line bg-paper absolute inset-y-0 left-0 flex w-16 flex-col overflow-hidden border-r py-4 transition-[width,box-shadow] duration-200 hover:w-52 hover:shadow-panel">
           <BrandMark size="sm" className="mb-6 px-5">
             <span className="text-ink truncate text-sm font-semibold opacity-0 transition-opacity group-hover:opacity-100">
-              AI 修图智能体
+              织像 AI
             </span>
           </BrandMark>
 
