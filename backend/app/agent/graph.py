@@ -1,3 +1,4 @@
+import ast
 from functools import lru_cache
 from typing import TypedDict
 
@@ -7,7 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from app.agent.llm import planner
 from app.agent.plan import PlanError, validate
 from app.services import tools as tool_service
-from app.tools import UnknownTool, label_of
+from app.tools import UnknownTool, label_of, spec_of
 
 _SYSTEM = """你是电商图片修图助手，通过调用工具完成用户的修图请求。
 
@@ -75,10 +76,43 @@ async def _plan(state: AgentState) -> AgentState:
             HumanMessage(state["goal"]),
         ]
     )
+    text = _text_of(message)
+    calls = message.tool_calls or _recover_function_style_call(text)
     return {
-        "plan": [{"tool": call["name"], "params": call["args"]} for call in message.tool_calls],
-        "reply": _text_of(message),
+        "plan": [{"tool": call["name"], "params": call["args"]} for call in calls],
+        "reply": "" if calls and not message.tool_calls else text,
     }
+
+
+def _recover_function_style_call(text: str) -> list[dict]:
+    """Recover a strict function-shaped tool response from compatible models.
+
+    Some OpenAI-compatible planner endpoints occasionally return ``tool(args)``
+    as ordinary text instead of populating ``AIMessage.tool_calls``. Only a
+    literal, zero/keyword-argument call to a registered tool is recoverable;
+    arbitrary text and executable expressions remain ordinary replies.
+    """
+    candidate = text.strip()
+    if not candidate:
+        return []
+    try:
+        expression = ast.parse(candidate, mode="eval").body
+    except SyntaxError:
+        return []
+    if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Name):
+        return []
+    if expression.args or any(keyword.arg is None for keyword in expression.keywords):
+        return []
+
+    try:
+        spec = spec_of(expression.func.id)
+        params = {
+            keyword.arg: ast.literal_eval(keyword.value)
+            for keyword in expression.keywords
+        }
+    except (UnknownTool, TypeError, ValueError, SyntaxError):
+        return []
+    return [{"name": spec.name, "args": params}]
 
 
 def _verify(state: AgentState) -> AgentState:

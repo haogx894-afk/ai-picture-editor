@@ -138,6 +138,16 @@ async def test_plain_answer_dispatches_nothing(signed_in: httpx.AsyncClient, fak
     assert turn["reply"] == "现有工具做不到这个。"
 
 
+async def test_function_style_tool_text_is_recovered(monkeypatch):
+    fake = FakePlanner(AIMessage(content="repair_text()"))
+    monkeypatch.setattr(graph, "planner", lambda: fake)
+
+    reply, plan = await graph.run("选中的部分都改成汉字", "已有选区")
+
+    assert plan == [{"tool": "repair_text", "params": {}}]
+    assert reply == "好，正在修复文字。"
+
+
 async def test_long_refusal_keeps_only_the_first_sentence(
     signed_in: httpx.AsyncClient, fake_planner
 ):
