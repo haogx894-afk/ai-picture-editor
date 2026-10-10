@@ -1,4 +1,5 @@
 import asyncio
+import time
 from functools import lru_cache
 
 import boto3
@@ -50,11 +51,26 @@ async def delete(key: str) -> None:
     await asyncio.to_thread(_client().delete_object, Bucket=get_settings().s3_bucket, Key=key)
 
 
+@lru_cache(maxsize=4096)
+def _signed_url_cached(endpoint: str, key: str, ttl: int, cache_window: int) -> str:
+    """在一个短缓存窗口内复用签名 URL，避免每次 API 刷新都改变图片地址。"""
+    return _client(endpoint).generate_presigned_url(
+        "get_object",
+        Params={"Bucket": get_settings().s3_bucket, "Key": key},
+        ExpiresIn=ttl,
+    )
+
+
 def signed_url(key: str) -> str:
     """生成短时签名 URL。纯本地计算，不产生网络请求。"""
     settings = get_settings()
-    return _client(settings.s3_public_endpoint or None).generate_presigned_url(
-        "get_object",
-        Params={"Bucket": settings.s3_bucket, "Key": key},
-        ExpiresIn=settings.s3_url_ttl,
+    endpoint = settings.s3_public_endpoint or settings.s3_endpoint
+    # URL 的有效期为 900 秒时，每 450 秒换一批，始终保留足够的有效期余量。
+    window = max(60, settings.s3_url_ttl // 2)
+    bucket = int(time.time() // window)
+    return _signed_url_cached(
+        endpoint,
+        key,
+        settings.s3_url_ttl,
+        bucket,
     )

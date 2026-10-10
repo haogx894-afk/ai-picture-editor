@@ -20,6 +20,7 @@ export type Asset = {
   has_alpha: boolean
   created_at: string
   url: string
+  thumbnail_url?: string
 }
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024

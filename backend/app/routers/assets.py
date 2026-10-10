@@ -1,8 +1,13 @@
+import asyncio
+import io
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
+from PIL import Image, ImageOps, UnidentifiedImageError
 
+from app import storage
 from app.db import SessionDep
 from app.deps import CurrentUser
 from app.models.asset import AssetKind, AssetSource
@@ -12,6 +17,19 @@ from app.services.assets import ORPHAN_TITLE
 from app.services.images import MAX_FILE_BYTES, ImageRejected, probe
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+
+def _thumbnail(data: bytes, size: int) -> tuple[bytes, str]:
+    with Image.open(io.BytesIO(data)) as source:
+        image = ImageOps.exif_transpose(source)
+        image.thumbnail((size, size), Image.Resampling.LANCZOS)
+        has_alpha = image.mode in {"RGBA", "LA", "PA"} or "transparency" in image.info
+        output = io.BytesIO()
+        if has_alpha:
+            image.convert("RGBA").save(output, format="PNG", optimize=True)
+            return output.getvalue(), "image/png"
+        image.convert("RGB").save(output, format="JPEG", quality=78, optimize=True)
+        return output.getvalue(), "image/jpeg"
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -62,6 +80,29 @@ async def list_library(
         )
         for record, cover, assets in groups
     ]
+
+
+@router.get("/{asset_id}/thumbnail")
+async def thumbnail(
+    asset_id: uuid.UUID,
+    user: CurrentUser,
+    session: SessionDep,
+    size: Annotated[int, Query(ge=32, le=512)] = 160,
+) -> Response:
+    """返回用于列表和图片墙的小图，避免缩略图下载完整原图。"""
+    asset = await asset_service.get_for_user(session, user.id, asset_id)
+    if asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "素材不存在")
+    try:
+        data = await storage.get(asset.storage_key)
+        body, content_type = await asyncio.to_thread(_thumbnail, data, size)
+    except (OSError, UnidentifiedImageError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "图片无法读取") from exc
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=600, stale-while-revalidate=60"},
+    )
 
 
 @router.get("/{asset_id}")

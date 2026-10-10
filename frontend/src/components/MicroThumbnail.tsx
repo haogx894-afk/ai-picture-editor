@@ -26,11 +26,13 @@ export default function MicroThumbnail({
     >
       <span className="micro-thumbnail__frame">
         <img
-          src={asset.url}
+          src={asset.thumbnail_url ?? asset.url}
           alt=""
-          width={asset.width}
-          height={asset.height}
-          loading="lazy"
+          width={160}
+          height={160}
+          loading={active ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={active ? 'high' : 'low'}
         />
         <span className="micro-thumbnail__slats" aria-hidden="true" />
         <span className="micro-thumbnail__label">{label}</span>

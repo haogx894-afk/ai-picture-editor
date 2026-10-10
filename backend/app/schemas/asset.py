@@ -19,6 +19,7 @@ class AssetOut(BaseModel):
     has_alpha: bool
     created_at: datetime
     url: str
+    thumbnail_url: str
 
     @classmethod
     def of(cls, asset: Asset) -> "AssetOut":
@@ -33,6 +34,7 @@ class AssetOut(BaseModel):
             has_alpha=asset.has_alpha,
             created_at=asset.created_at,
             url=storage.signed_url(asset.storage_key),
+            thumbnail_url=f"/api/assets/{asset.id}/thumbnail?size=160",
         )
 
 
