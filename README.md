@@ -178,10 +178,3 @@ docker compose --profile deploy up -d --build
 部署编排会先运行 `migrate` 服务完成数据库迁移，再启动 API 和 Worker。管理员首次启动时由 `ADMIN_USERNAME` 与 `ADMIN_PASSWORD` 自动初始化，之后可访问 `/admin` 审核注册申请、切换免费/VIP/SVIP 套餐并调整 Agent 与修图额度。免费用户默认拥有 2 次 Agent 输入、2 次 Agent 输出和 2 次修图额度，SVIP 默认拥有 4 次修图额度。
 
 客服二维码通过前端环境变量配置：在 `frontend/.env` 中设置 `VITE_CONTACT_QQ_QR_URL=/qq-qr.jpg`，并把二维码图片放入 `frontend/public/qq-qr.jpg` 后重新构建前端；未配置时默认使用该文件，也可以填写一个 HTTPS 图片地址。登录页、首页和工作台都会显示“联系客服”入口。
-
-
-![](https://pic.yupi.icu/1/437345684-56411098-b60e-4267-8ba2-4ebc5d416afc.png)
-
-1 天不到 1 块钱，绝对是对自己最值的投资！成为编程导航会员后，可以解锁近 30 套项目的教程和资料，PC 网站和 APP 都可以学习，如图：
-
-![](https://pic.yupi.icu/1/image-20250120113756426-20250422160856746.png)
